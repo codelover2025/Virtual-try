@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="180" viewBox="0 0 160 180" fill="none">
+  <defs>
+    <linearGradient id="platBand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="35%" stop-color="#e2e8f0"/>
+      <stop offset="70%" stop-color="#94a3b8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer Platinum Band -->
+  <ellipse cx="80" cy="90" rx="52" ry="52" stroke="url(#platBand)" stroke-width="14" fill="none"/>
+  <!-- Polished Highlight -->
+  <path d="M40 70 A52 52 0 0 1 120 70" stroke="#ffffff" stroke-width="3" stroke-linecap="round" fill="none" opacity="0.8"/>
+  <!-- Beveled Channel Groove -->
+  <ellipse cx="80" cy="90" rx="52" ry="52" stroke="#334155" stroke-width="1" stroke-dasharray="8 8" fill="none" opacity="0.5"/>
+</svg>

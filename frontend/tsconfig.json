@@ -1,0 +1,78 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@vj/ui": [
+        "./src/ui/index.ts"
+      ],
+      "@vj/ui/*": [
+        "./src/ui/*"
+      ],
+      "@vj/ar-engine": [
+        "./src/ar-engine/index.ts"
+      ],
+      "@vj/ar-engine/*": [
+        "./src/ar-engine/*"
+      ],
+      "@vj/shared": [
+        "./src/shared/index.ts"
+      ],
+      "@vj/shared/*": [
+        "./src/shared/*"
+      ],
+      "@vj/types": [
+        "./src/types/index.ts"
+      ],
+      "@vj/types/*": [
+        "./src/types/*"
+      ],
+      "@vj/hooks": [
+        "./src/hooks/index.ts"
+      ],
+      "@vj/hooks/*": [
+        "./src/hooks/*"
+      ],
+      "@vj/api-client": [
+        "./src/api-client/index.ts"
+      ],
+      "@vj/api-client/*": [
+        "./src/api-client/*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
+

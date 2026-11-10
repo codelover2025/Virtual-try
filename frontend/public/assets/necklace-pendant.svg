@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="260" viewBox="0 0 320 260" fill="none">
+  <defs>
+    <!-- Rich Multi-Stop 18k Yellow Gold Gradient -->
+    <linearGradient id="chainGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff2a8"/>
+      <stop offset="25%" stop-color="#f5d76e"/>
+      <stop offset="50%" stop-color="#d4af37"/>
+      <stop offset="75%" stop-color="#aa8214"/>
+      <stop offset="100%" stop-color="#73540a"/>
+    </linearGradient>
+
+    <!-- Deep Metallic Shadow Gradient -->
+    <linearGradient id="chainShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5a4108" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#3b2b06" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <!-- Brilliant Solitaire Diamond Radial Gradient -->
+    <radialGradient id="teardropDiamond" cx="36%" cy="30%" r="68%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="35%" stop-color="#f0f9ff"/>
+      <stop offset="65%" stop-color="#bae6fd"/>
+      <stop offset="85%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </radialGradient>
+
+    <!-- Solitaire Inner Facet Shimmer -->
+    <linearGradient id="diamondFacet" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#e0f2fe" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#0284c7" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Filter Drop Shadow for 2D Canvas Depth -->
+  <filter id="necklaceGlow" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.45"/>
+  </filter>
+
+  <g filter="url(#necklaceGlow)">
+    <!-- Chain Shadow Underlay for Real Depth -->
+    <path d="M40 22 Q105 130 160 170 Q215 130 280 22" stroke="url(#chainShadow)" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+
+    <!-- Main Solid 18K Gold Curb/Cable Chain (No invisible dash-arrays) -->
+    <path d="M40 20 Q105 128 160 168 Q215 128 280 20" stroke="url(#chainGold)" stroke-width="3.6" stroke-linecap="round" fill="none"/>
+
+    <!-- Golden Cable Link Highlights (Simulating delicate interlocking links) -->
+    <path d="M40 20 Q105 128 160 168 Q215 128 280 20" stroke="#fff9d6" stroke-width="1.2" stroke-dasharray="4 3" stroke-linecap="round" fill="none"/>
+
+    <!-- Left & Right Clavicle Terminal Ring Accents -->
+    <circle cx="40" cy="20" r="3.5" fill="url(#chainGold)" stroke="#73540a" stroke-width="0.8"/>
+    <circle cx="280" cy="20" r="3.5" fill="url(#chainGold)" stroke="#73540a" stroke-width="0.8"/>
+
+    <!-- Pendant Bail Ring (Connecting Chain to Pendant) -->
+    <ellipse cx="160" cy="169" rx="4.5" ry="5.5" fill="none" stroke="url(#chainGold)" stroke-width="2.5"/>
+    <ellipse cx="160" cy="169" rx="2.5" ry="3.5" fill="none" stroke="#fff9d6" stroke-width="0.8"/>
+
+    <!-- Pendant Gold Bezel Basket -->
+    <path d="M160 176 C178 198 185 218 185 231 C185 245 174 256 160 256 C146 256 135 245 135 231 C135 218 142 198 160 176 Z"
+          fill="#8a6a12" stroke="url(#chainGold)" stroke-width="2.8"/>
+
+    <!-- Brilliant Solitaire Teardrop Diamond Gem -->
+    <path d="M160 178 C176 199 182 218 182 230 C182 243 172 253 160 253 C148 253 138 243 138 230 C138 218 144 199 160 178 Z"
+          fill="url(#teardropDiamond)"/>
+
+    <!-- Internal Facet Geometry for Diamond Sparkle -->
+    <polygon points="160,182 170,215 160,225 150,215" fill="url(#diamondFacet)" stroke="#ffffff" stroke-width="0.5" stroke-opacity="0.7"/>
+    <polygon points="160,225 174,230 160,248 146,230" fill="#ffffff" fill-opacity="0.25"/>
+
+    <!-- Diamond Light Reflection Glints -->
+    <ellipse cx="152" cy="216" rx="4.5" ry="9" transform="rotate(-15 152 216)" fill="#ffffff" fill-opacity="0.85"/>
+    <circle cx="167" cy="235" r="2.5" fill="#ffffff" fill-opacity="0.9"/>
+  </g>
+</svg>

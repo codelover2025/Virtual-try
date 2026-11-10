@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 220 220" fill="none">
+  <defs>
+    <linearGradient id="cuffSilver" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#cbd5e1"/>
+      <stop offset="100%" stop-color="#64748b"/>
+    </linearGradient>
+    <radialGradient id="tennisStone" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="60%" stop-color="#e0f2fe"/>
+      <stop offset="100%" stop-color="#7dd3fc"/>
+    </radialGradient>
+  </defs>
+  <!-- Pavé Tennis Bangle Ring -->
+  <circle cx="110" cy="110" r="74" stroke="url(#cuffSilver)" stroke-width="12" fill="none"/>
+  <!-- Inline Diamond Gemstones around perimeter -->
+  <g fill="url(#tennisStone)" stroke="#ffffff" stroke-width="1">
+    <circle cx="110" cy="36" r="4.5"/>
+    <circle cx="134" cy="39" r="4.5"/>
+    <circle cx="158" cy="50" r="4.5"/>
+    <circle cx="175" cy="70" r="4.5"/>
+    <circle cx="184" cy="94" r="4.5"/>
+    <circle cx="184" cy="126" r="4.5"/>
+    <circle cx="175" cy="150" r="4.5"/>
+    <circle cx="158" cy="170" r="4.5"/>
+    <circle cx="134" cy="181" r="4.5"/>
+    <circle cx="110" cy="184" r="4.5"/>
+    <circle cx="86" cy="181" r="4.5"/>
+    <circle cx="62" cy="170" r="4.5"/>
+    <circle cx="45" cy="150" r="4.5"/>
+    <circle cx="36" cy="126" r="4.5"/>
+    <circle cx="36" cy="94" r="4.5"/>
+    <circle cx="45" cy="70" r="4.5"/>
+    <circle cx="62" cy="50" r="4.5"/>
+    <circle cx="86" cy="39" r="4.5"/>
+  </g>
+</svg>
