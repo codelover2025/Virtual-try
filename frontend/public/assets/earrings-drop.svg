@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="240" viewBox="0 0 160 240" fill="none">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fae17d"/>
+      <stop offset="50%" stop-color="#d4af37"/>
+      <stop offset="100%" stop-color="#996515"/>
+    </linearGradient>
+    <radialGradient id="gem" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="60%" stop-color="#e0f7fa"/>
+      <stop offset="100%" stop-color="#80deea"/>
+    </radialGradient>
+  </defs>
+  <!-- Hook -->
+  <path d="M80 20 C60 20 52 42 66 54 C72 60 76 66 76 74" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
+  <!-- Top Bead -->
+  <circle cx="76" cy="82" r="8" fill="url(#gold)" stroke="#8a6a12" stroke-width="1.5"/>
+  <!-- Connector Stem -->
+  <line x1="76" y1="90" x2="76" y2="120" stroke="url(#gold)" stroke-width="4"/>
+  <!-- Diamond / Drop Cluster -->
+  <path d="M76 120 L96 156 L76 196 L56 156 Z" fill="url(#gem)" stroke="url(#gold)" stroke-width="3"/>
+  <circle cx="76" cy="156" r="6" fill="#ffffff" opacity="0.8"/>
+  <path d="M76 196 L84 216 L76 226 L68 216 Z" fill="url(#gold)"/>
+</svg>

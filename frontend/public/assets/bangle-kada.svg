@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="220" viewBox="0 0 220 220" fill="none">
+  <defs>
+    <linearGradient id="kadaGold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fae17d"/>
+      <stop offset="45%" stop-color="#d4af37"/>
+      <stop offset="85%" stop-color="#b48811"/>
+      <stop offset="100%" stop-color="#785002"/>
+    </linearGradient>
+  </defs>
+  <!-- Circular Kada Ring with Open Gap -->
+  <path d="M78 40 A72 72 0 1 0 142 40" stroke="url(#kadaGold)" stroke-width="18" stroke-linecap="round" fill="none"/>
+  <!-- Ornate Terminal Lion / Sphere Finials -->
+  <circle cx="76" cy="40" r="14" fill="url(#kadaGold)" stroke="#684200" stroke-width="2"/>
+  <circle cx="144" cy="40" r="14" fill="url(#kadaGold)" stroke="#684200" stroke-width="2"/>
+  <circle cx="76" cy="40" r="6" fill="#fae17d"/>
+  <circle cx="144" cy="40" r="6" fill="#fae17d"/>
+  <!-- Relief Filigree Texture on Arch -->
+  <path d="M50 140 A72 72 0 0 0 170 140" stroke="#fae17d" stroke-width="3" stroke-dasharray="4 8" fill="none" opacity="0.75"/>
+</svg>
