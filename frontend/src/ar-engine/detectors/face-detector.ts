@@ -391,13 +391,13 @@ export class FaceDetector implements ModelAdapter {
 
     // ── Ear Anchors: 3D Head-Local Projection ─────────────────────────────
     // Anchors: Landmark 234 (right tragus) and Landmark 454 (left tragus).
-    // Anatomical earlobe offsets in head-local 3D coordinates:
-    // - Downward along local Y: ~0.18 x faceHeight to reach the bottom curve of the lobe
-    // - Outward along local X: ~0.065 x faceHeight to align with outer ear contour
-    // - Backward along local Z: ~0.19 x faceHeight towards back of skull to align with ear cartilage in profile
-    const downDist = 0.18 * faceHeight;
-    const outDist  = 0.065 * faceHeight;
-    const backDist = 0.19 * faceHeight;
+    // Anatomical earlobe piercing offsets in head-local 3D coordinates:
+    // - Downward along local Y: ~0.08 x faceHeight to reach the earlobe piercing point
+    // - Outward along local X: ~0.035 x faceHeight to center on the earlobe flesh
+    // - Backward along local Z: ~0.17 x faceHeight towards back of skull to align with ear cartilage in profile
+    const downDist = 0.08 * faceHeight;
+    const outDist  = 0.035 * faceHeight;
+    const backDist = 0.17 * faceHeight;
 
     // Right ear anchor (Landmark 234, subject's right): outward is -u_left
     if (rightTragus) {
@@ -591,9 +591,9 @@ export class FaceDetector implements ModelAdapter {
     const u_down_y = Math.cos(roll);
     const u_left_x = Math.cos(roll);
     const u_left_y = Math.sin(roll);
-    const backShiftX = -Math.sin(yaw) * (0.19 * faceHeight);
-    const downDist = 0.18 * faceHeight;
-    const outDist = 0.065 * faceHeight;
+    const backShiftX = -Math.sin(yaw) * (0.17 * faceHeight);
+    const downDist = 0.08 * faceHeight;
+    const outDist = 0.035 * faceHeight;
 
     if (named['RIGHT_EAR_TRAGUS']) {
       named['RIGHT_EAR_LOBE'] = {
