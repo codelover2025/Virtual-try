@@ -1,4 +1,4 @@
-import type { JewelleryConfig, RingConfig } from '@vj/ar-engine';
+import type { JewelleryConfig, RingConfig, BangleConfig } from '@vj/ar-engine';
 import type { JewelleryKind } from '@vj/shared';
 import type { JewelleryAssetDto } from '@vj/types';
 import { api } from '@/lib/api';
@@ -51,12 +51,13 @@ export async function toJewelleryConfig(
   asset: AssetLike,
   productId?: string,
   ringConfig?: RingConfig,
+  bangleConfig?: BangleConfig,
 ): Promise<JewelleryConfig> {
   const source = asset?.url || getDefaultProceduralUrl(jewelleryKind);
   return {
     jewelleryKind,
     assetUrl: await cachedAssetUrl(source),
-    assetType: asset?.assetType ?? 'PROCEDURAL',
+    assetType: (jewelleryKind === 'RINGS' || jewelleryKind === 'BANGLES') ? 'PROCEDURAL' : (asset?.assetType ?? 'PROCEDURAL'),
     anchorProfile: (asset?.anchorProfile ?? {}) as JewelleryConfig['anchorProfile'],
     defaultScale: asset?.defaultScale ?? 1,
     defaultRotationZ: asset?.defaultRotationZ ?? 0,
@@ -64,6 +65,7 @@ export async function toJewelleryConfig(
     fingerIndex: asset?.fingerIndex ?? (jewelleryKind === 'RINGS' ? 3 : null),
     productId,
     ringConfig,
+    bangleConfig,
   };
 }
 

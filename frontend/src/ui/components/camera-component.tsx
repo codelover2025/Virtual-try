@@ -356,62 +356,45 @@ export function CameraComponent({
         </div>
       )}
 
-      {/* Dedicated Bottom Safe Zone Shutter / Open Camera Bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-24 z-20 flex items-center justify-center gap-5 px-6 bg-gradient-to-t from-black via-black/90 to-transparent border-t border-white/10 backdrop-blur-sm">
-        {running ? (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onStop}
-              className="rounded-full bg-black/70 text-white hover:bg-black/90 border-white/20 text-xs backdrop-blur-md shadow-md cursor-pointer"
-            >
-              <CameraOff className="mr-1.5 h-3.5 w-3.5 text-amber-400" />
-              Close Camera
-            </Button>
-
-            {/* Shutter Button */}
-            <button
-              type="button"
-              data-testid="shutter-btn"
-              onClick={triggerShutter}
-              disabled={captureDisabled || countdown !== null}
-              title="Take Studio Snapshot"
-              className="group relative flex h-16 w-16 items-center justify-center rounded-full border-4 border-white/90 bg-primary shadow-2xl hover:scale-105 active:scale-95 transition-all duration-150 disabled:opacity-50 cursor-pointer"
-            >
-              <div className="h-11 w-11 rounded-full bg-white transition group-hover:bg-primary-foreground" />
-              <Camera className="absolute h-5 w-5 text-primary group-hover:text-white transition" />
-            </button>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={triggerShutter}
-              disabled={captureDisabled || countdown !== null}
-              className="rounded-full bg-black/70 text-white hover:bg-black/90 border-white/20 text-xs backdrop-blur-md shadow-md cursor-pointer"
-            >
-              Capture
-            </Button>
-          </>
-        ) : (
+      {/* Dedicated Bottom Safe Zone Shutter Bar (visible when camera is running) */}
+      {running ? (
+        <div className="absolute bottom-0 left-0 right-0 h-24 z-20 flex items-center justify-center gap-5 px-6 bg-gradient-to-t from-black via-black/90 to-transparent border-t border-white/10 backdrop-blur-sm">
           <Button
             type="button"
+            variant="outline"
             size="sm"
-            onClick={onStart}
-            disabled={starting}
-            className="rounded-full px-7 py-5 text-xs font-semibold bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/30 cursor-pointer"
+            onClick={onStop}
+            className="rounded-full bg-black/70 text-white hover:bg-black/90 border-white/20 text-xs backdrop-blur-md shadow-md cursor-pointer"
           >
-            {starting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Camera className="mr-2 h-4 w-4" />
-            )}
-            {starting ? 'Connecting Camera…' : 'Open Camera'}
+            <CameraOff className="mr-1.5 h-3.5 w-3.5 text-amber-400" />
+            Close Camera
           </Button>
-        )}
-      </div>
+
+          {/* Shutter Button */}
+          <button
+            type="button"
+            data-testid="shutter-btn"
+            onClick={triggerShutter}
+            disabled={captureDisabled || countdown !== null}
+            title="Take Studio Snapshot"
+            className="group relative flex h-16 w-16 items-center justify-center rounded-full border-4 border-white/90 bg-primary shadow-2xl hover:scale-105 active:scale-95 transition-all duration-150 disabled:opacity-50 cursor-pointer"
+          >
+            <div className="h-11 w-11 rounded-full bg-white transition group-hover:bg-primary-foreground" />
+            <Camera className="absolute h-5 w-5 text-primary group-hover:text-white transition" />
+          </button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={triggerShutter}
+            disabled={captureDisabled || countdown !== null}
+            className="rounded-full bg-black/70 text-white hover:bg-black/90 border-white/20 text-xs backdrop-blur-md shadow-md cursor-pointer"
+          >
+            Capture
+          </Button>
+        </div>
+      ) : null}
 
       {/* Error banner if camera fails while running */}
       {running && hud.error ? (

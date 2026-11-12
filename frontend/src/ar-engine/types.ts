@@ -84,6 +84,16 @@ export type RingConfig = {
   accentStones: boolean;
 };
 
+export type BangleConfig = {
+  id: string;
+  name?: string;
+  bandMetal: 'yellow' | 'white' | 'rose';
+  bandThickness?: number;
+  studColor?: string;
+  studShape?: 'round' | 'diamond' | 'oval';
+  studCount?: number;
+};
+
 export type JewelleryConfig = {
   jewelleryKind:      JewelleryKind;
   assetUrl:           string;
@@ -95,6 +105,7 @@ export type JewelleryConfig = {
   fingerIndex?:       number | null;
   productId?:         string;
   ringConfig?:        RingConfig;
+  bangleConfig?:      BangleConfig;
 };
 
 export type ArEngineConfig = JewelleryConfig & {

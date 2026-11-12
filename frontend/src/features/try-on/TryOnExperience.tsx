@@ -376,6 +376,7 @@ export function TryOnExperience({
         asset,
         currentProduct.id,
         (currentProduct.metadata as any)?.ringConfig,
+        (currentProduct.metadata as any)?.bangleConfig,
       );
       await engine.start(
         {

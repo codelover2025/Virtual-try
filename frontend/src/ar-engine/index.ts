@@ -26,6 +26,10 @@ export {
   RING_CONFIGS,
   RING_ALIAS_MAP,
   resolveRingConfig,
+  buildBangle,
+  BANGLE_CONFIGS,
+  BANGLE_ALIAS_MAP,
+  resolveBangleConfig,
 } from './renderers/three-renderer.js';
 export { CaptureCompositor } from './capture/capture-compositor.js';
 export { loadOpenCv } from './opencv/opencv-loader.js';

@@ -24,6 +24,7 @@ import { mapPoseToCanvas } from './utils/coordinate-transform.js';
 import type {
   ArEngineConfig,
   ArEngineEvents,
+  BangleConfig,
   CaptureOptions,
   CaptureResult,
   JewelleryConfig,
@@ -225,8 +226,9 @@ export class ArEngine {
     if (!this.host || !this.canvasRenderer) return;
 
     const isRingSwap = this.config?.jewelleryKind === 'RINGS' && config.jewelleryKind === 'RINGS';
+    const isBangleSwap = this.config?.jewelleryKind === 'BANGLES' && config.jewelleryKind === 'BANGLES';
 
-    if (!isRingSwap) {
+    if (!isRingSwap && !isBangleSwap) {
       // Fully clear previous active asset from both renderers
       if (this.threeRenderer) {
         this.threeRenderer.clearJewellery();
@@ -643,7 +645,7 @@ export class ArEngine {
 
   is3DAsset(config?: JewelleryConfig | null): boolean {
     if (!config) return false;
-    if (config.jewelleryKind === 'RINGS') return true;
+    if (config.jewelleryKind === 'RINGS' || config.jewelleryKind === 'BANGLES') return true;
     const type = String(config.assetType);
     if (type === 'IMAGE_OVERLAY' || type === 'IMAGE_2D') return false;
     if (
@@ -678,6 +680,10 @@ export class ArEngine {
 
   switchRing(configOrId: RingConfig | string): void {
     this.threeRenderer?.switchRing(configOrId);
+  }
+
+  switchBangle(configOrId: BangleConfig | string): void {
+    this.threeRenderer?.switchBangle(configOrId);
   }
 
   getCanvasRenderer(): Canvas2dRenderer | null {
@@ -727,6 +733,9 @@ export class ArEngine {
       if (config.jewelleryKind === 'RINGS') {
         const ringSpec = config.ringConfig || config.productId || config.assetUrl;
         this.threeRenderer.switchRing(ringSpec);
+      } else if (config.jewelleryKind === 'BANGLES') {
+        const bangleSpec = config.bangleConfig || config.productId || config.assetUrl;
+        this.threeRenderer.switchBangle(bangleSpec);
       } else {
         this.threeRenderer.clearJewellery();
         const modelUrl = (config.assetUrl?.endsWith('.glb') || config.assetUrl?.endsWith('.gltf'))

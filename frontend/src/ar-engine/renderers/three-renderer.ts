@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import type { PoseFit, RingConfig } from '../types.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import type { PoseFit, RingConfig, BangleConfig } from '../types.js';
 
 type LoadedAsset = {
   primary:   THREE.Group;
@@ -58,6 +59,35 @@ export class ThreeRenderer {
   private ringOpacity = 1.0;
   private targetRingOpacity = 1.0;
   private currentGemOpacity = 1.0;
+
+  // Bangle mesh reference for tracking loop (prevents stale mesh reads)
+  public readonly bangleRef: {
+    current: {
+      group: THREE.Group;
+      frontBand: THREE.Mesh;
+      backBand: THREE.Mesh;
+      frontStuds?: THREE.Mesh;
+      backStuds?: THREE.Mesh;
+    } | null;
+  } = { current: null };
+
+  // Uniforms shared by all bangle front/back materials
+  private bangleUniforms = {
+    uBangleCenter: { value: new THREE.Vector3() },
+    uCamPos: { value: new THREE.Vector3(0, 0, 500) },
+    uBangleRadius: { value: 1.0 },
+    uBangleOpacity: { value: 1.0 },
+    uDebugMode: { value: 0 },
+  };
+
+  // Stability & smoothing state for bangle
+  private smoothBanglePos = new THREE.Vector3();
+  private smoothBangleQuat = new THREE.Quaternion();
+  private smoothBangleScale = 1.0;
+  private hasInitialBanglePose = false;
+  private bangleTrackingDropFrames = 0;
+  private bangleOpacity = 1.0;
+  private targetBangleOpacity = 1.0;
 
   // Asset caching with LRU
   private readonly assetCache = new Map<string, { group: THREE.Group; lastUsed: number }>();
@@ -358,15 +388,69 @@ export class ThreeRenderer {
     this.ready = true;
   }
 
-  loadProceduralBangle(): void {
-    this._clearGroups();
+  loadProceduralBangle(configOrId?: BangleConfig | string): void {
+    this.switchBangle(configOrId ?? 'prod-bangle-001');
+  }
+
+  /**
+   * Two-pass realistic Bangle try-on:
+   * Front mesh: fully opaque, depthWrite: true, renderOrder: 2, side >= -seam
+   * Back mesh: translucent (0.16), darkened (0.7x), depthWrite: false, renderOrder: 1, side <= seam
+   * Seamless blend with smoothstep(-seam, seam, side)
+   */
+  switchBangle(configOrId?: BangleConfig | string | null): void {
+    const config = resolveBangleConfig(configOrId);
+    console.log('[ThreeRenderer] Rebuilding bangle for product:', config.id, config);
+
+    // 1. Remove old bangle and dispose geometries & materials
+    if (this.bangleRef.current) {
+      this.root.remove(this.bangleRef.current.group);
+      this._disposeBangle(this.bangleRef.current);
+      this.bangleRef.current = null;
+    }
+
+    // 2. Clear old ring if any
+    if (this.ringRef.current) {
+      this.root.remove(this.ringRef.current);
+      this._disposeGroup(this.ringRef.current, true);
+      this.ringRef.current = null;
+    }
+
+    // 3. Build the new two-pass bangle (band + studs)
     this.instanceOwnsGeometry = true;
-    const mesh = createKadaBangle();
-    this.root.add(mesh);
+    const isDebugMode =
+      typeof window !== 'undefined' &&
+      (new URLSearchParams(window.location.search).get('debug') === '1' ||
+        new URLSearchParams(window.location.search).get('debug') === 'true');
+    this.bangleUniforms.uDebugMode.value = isDebugMode ? 1 : 0;
+
+    const bundle = buildBangle(config, this.envTexture, this.bangleUniforms);
+    this.bangleRef.current = bundle;
+
+    // 4. Add to the same parent group (this.root) holding tracking transform
+    this.root.add(bundle.group);
+
     this.mirrorSecondary = false;
     this.secondary.visible = false;
-    this.currentAssetUrl = 'procedural://bangle';
+    this.currentAssetUrl = `procedural://bangle?id=${config.id}`;
     this.ready = true;
+  }
+
+  private _disposeBangle(bundle: {
+    group: THREE.Group;
+    frontBand: THREE.Mesh;
+    backBand: THREE.Mesh;
+    frontStuds?: THREE.Mesh;
+    backStuds?: THREE.Mesh;
+  }): void {
+    // Both meshes share the same geometry, dispose once
+    bundle.frontBand.geometry.dispose();
+    bundle.frontStuds?.geometry.dispose();
+
+    (bundle.frontBand.material as THREE.Material).dispose();
+    (bundle.backBand.material as THREE.Material).dispose();
+    (bundle.frontStuds?.material as THREE.Material)?.dispose();
+    (bundle.backStuds?.material as THREE.Material)?.dispose();
   }
 
   loadProcedural(kind: string, mirrorSec = false): void {
@@ -465,6 +549,12 @@ export class ThreeRenderer {
     const isRing = (kind ?? '').toUpperCase().includes('RING') || (this.currentAssetUrl ?? '').includes('ring');
     if (isRing) {
       this._renderRing(pose, kind);
+      return;
+    }
+
+    const isBangle = (kind ?? '').toUpperCase().includes('BANGLE') || (kind ?? '').toUpperCase().includes('BRACELET') || (this.currentAssetUrl ?? '').includes('bangle');
+    if (isBangle) {
+      this._renderBangle(pose, kind);
       return;
     }
 
@@ -786,6 +876,111 @@ export class ThreeRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
+  /**
+   * Dedicated high-realism Bangle Try-On Pipeline (Two-Pass Front/Back Split):
+   * 1. FRONT mesh: current material, opacity 1, transparent false/true, depthWrite true, renderOrder 2.
+   *    In fragment shader, discard only fragments on back side (side < -seam).
+   * 2. BACK mesh: cloned material, transparent true, opacity 0.16 (0.12-0.2), depthWrite false, renderOrder 1.
+   *    In fragment shader, discard only fragments on front side (side > seam), darken x0.7, remove any outline.
+   * 3. Compute split every frame:
+   *    vec3 toCam = normalize(uCamPos - uBangleCenter);
+   *    float side = dot(vWorldPos - uBangleCenter, toCam);
+   *    float frontMask = smoothstep(-seam, seam, side);
+   * 4. Keep visible while moving: update uniforms every frame (including held frames).
+   * 5. Debug ?debug=1: tint back mesh red.
+   */
+  private _renderBangle(pose: PoseFit, kind?: string): void {
+    // 1. Tracking drop hysteresis (keep pose for ~5 frames, then fade opacity out)
+    const isTracking = pose.visible && pose.confidence > 0.08;
+    if (isTracking) {
+      this.bangleTrackingDropFrames = 0;
+      this.targetBangleOpacity = 1.0;
+    } else {
+      this.bangleTrackingDropFrames++;
+      if (this.bangleTrackingDropFrames <= 5 && this.hasInitialBanglePose) {
+        // Keep last pose, keep current opacity
+        this.targetBangleOpacity = 1.0;
+      } else {
+        // Fade opacity out gradually
+        this.targetBangleOpacity = 0.0;
+      }
+    }
+
+    // Smooth opacity transition (fades both front and back meshes together)
+    if (this.bangleOpacity !== this.targetBangleOpacity) {
+      const fadeSpeed = this.targetBangleOpacity > this.bangleOpacity ? 0.25 : 0.15;
+      this.bangleOpacity += (this.targetBangleOpacity - this.bangleOpacity) * fadeSpeed;
+      if (Math.abs(this.bangleOpacity - this.targetBangleOpacity) < 0.01) {
+        this.bangleOpacity = this.targetBangleOpacity;
+      }
+    }
+
+    if (!this.ready || this.bangleOpacity < 0.01) {
+      this.root.visible = false;
+      this.secondary.visible = false;
+      this.fingerOccluder.visible = false;
+      this.occluder.visible = false;
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+
+    // 2. Targets: Position, Scale & Orientation (Placement, size, orientation preserved)
+    const targetPos = new THREE.Vector3(pose.position.x, pose.position.y, 4);
+    const s = worldScaleForKind(kind, pose.scale);
+    const yaw = pose.rotationY ?? pose.yaw ?? 0;
+    const pitch = pose.rotationX ?? pose.pitch ?? 0;
+    const roll = -pose.rotationZ;
+
+    const targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, roll));
+
+    // 3. Stability Smoothing: slerp quaternion (alpha ~0.4), lerp position & scale
+    if (!this.hasInitialBanglePose) {
+      this.smoothBanglePos.copy(targetPos);
+      this.smoothBangleQuat.copy(targetQuat);
+      this.smoothBangleScale = s;
+      this.hasInitialBanglePose = true;
+    } else if (isTracking) {
+      this.smoothBanglePos.lerp(targetPos, 0.4);
+      this.smoothBangleQuat.slerp(targetQuat, 0.4);
+      this.smoothBangleScale += (s - this.smoothBangleScale) * 0.4;
+    }
+
+    // 4. Apply to this.root (both meshes share the same transform)
+    this.root.visible = true;
+    this.root.position.copy(this.smoothBanglePos);
+    this.root.quaternion.copy(this.smoothBangleQuat);
+    this.root.scale.setScalar(this.smoothBangleScale);
+
+    // Read ref inside loop so loop never uses stale mesh
+    const currentBangle = this.bangleRef.current;
+    if (currentBangle && currentBangle.group.parent !== this.root) {
+      this.root.add(currentBangle.group);
+    }
+
+    // 5. Update uniforms EVERY FRAME (including held frames when tracking drops)
+    const isDebugMode =
+      typeof window !== 'undefined' &&
+      (new URLSearchParams(window.location.search).get('debug') === '1' ||
+        new URLSearchParams(window.location.search).get('debug') === 'true');
+
+    this.bangleUniforms.uBangleCenter.value.copy(this.smoothBanglePos);
+    this.bangleUniforms.uCamPos.value.set(
+      this.smoothBanglePos.x,
+      this.smoothBanglePos.y,
+      this.camera.position.z, // 500
+    );
+    this.bangleUniforms.uBangleRadius.value = Math.max(1.0, this.smoothBangleScale * 0.85);
+    this.bangleUniforms.uBangleOpacity.value = this.bangleOpacity;
+    this.bangleUniforms.uDebugMode.value = isDebugMode ? 1 : 0;
+
+    // Hide secondary and other occluders
+    this.secondary.visible = false;
+    this.fingerOccluder.visible = false;
+    this.occluder.visible = false;
+
+    this.renderer.render(this.scene, this.camera);
+  }
+
   getOccluder(): THREE.Mesh {
     return this.occluder;
   }
@@ -800,6 +995,15 @@ export class ThreeRenderer {
     this.fingerOccluder.visible = false;
     this.hasInitialRingPose = false;
     this.ringTrackingDropFrames = 0;
+    this.hasInitialBanglePose = false;
+    this.bangleTrackingDropFrames = 0;
+    this.bangleOpacity = 1.0;
+    this.targetBangleOpacity = 1.0;
+    if (this.bangleRef.current) {
+      this.root.remove(this.bangleRef.current.group);
+      this._disposeBangle(this.bangleRef.current);
+      this.bangleRef.current = null;
+    }
     try {
       this.renderer.clear();
     } catch {
@@ -817,6 +1021,10 @@ export class ThreeRenderer {
 
   dispose(): void {
     this._clearGroups();
+    if (this.bangleRef.current) {
+      this._disposeBangle(this.bangleRef.current);
+      this.bangleRef.current = null;
+    }
     this.assetCache.forEach((entry) => this._disposeGroup(entry.group, true));
     this.assetCache.clear();
     if (this.mixer) {
@@ -1522,23 +1730,298 @@ function createSolitaireRing(
   return buildRing(RING_CONFIGS['prod-ring-001'], envTexture, shadowTexture);
 }
 
-function createKadaBangle(): THREE.Group {
+export const BANGLE_CONFIGS: Record<string, BangleConfig> = {
+  'prod-bangle-001': {
+    id: 'prod-bangle-001',
+    name: 'Dynasty 22k Imperial Gold Kada',
+    bandMetal: 'yellow',
+    bandThickness: 0.075,
+    studColor: '#FFFFFF',
+    studShape: 'round',
+    studCount: 20,
+  },
+  'prod-bangle-002': {
+    id: 'prod-bangle-002',
+    name: 'Platinum Pavé Diamond Bangle',
+    bandMetal: 'white',
+    bandThickness: 0.07,
+    studColor: '#F0F8FF',
+    studShape: 'diamond',
+    studCount: 24,
+  },
+  'prod-bangle-003': {
+    id: 'prod-bangle-003',
+    name: 'Royal Ruby Accented Gold Cuff',
+    bandMetal: 'yellow',
+    bandThickness: 0.08,
+    studColor: '#E0115F',
+    studShape: 'round',
+    studCount: 16,
+  },
+  'prod-bangle-004': {
+    id: 'prod-bangle-004',
+    name: 'Emerald Crown Filigree Bangle',
+    bandMetal: 'yellow',
+    bandThickness: 0.075,
+    studColor: '#2ECC71',
+    studShape: 'round',
+    studCount: 18,
+  },
+};
+
+export const BANGLE_ALIAS_MAP: Record<string, string> = {
+  'dynasty-22k-imperial-gold-kada': 'prod-bangle-001',
+  'kada': 'prod-bangle-001',
+  'platinum-pave-diamond-bangle': 'prod-bangle-002',
+  'platinum': 'prod-bangle-002',
+  'royal-ruby-accented-gold-cuff': 'prod-bangle-003',
+  'cuff': 'prod-bangle-003',
+  'emerald-crown-filigree-bangle': 'prod-bangle-004',
+  'filigree': 'prod-bangle-004',
+};
+
+export function resolveBangleConfig(configOrId?: BangleConfig | string | null): BangleConfig {
+  if (configOrId && typeof configOrId === 'object' && 'bandMetal' in configOrId) {
+    return configOrId;
+  }
+  const str = typeof configOrId === 'string' ? configOrId.toLowerCase().trim() : '';
+  if (str) {
+    const urlMatch = str.match(/id=([a-z0-9_-]+)/i);
+    const candidateId = (urlMatch ? urlMatch[1] : str).toLowerCase();
+
+    if (BANGLE_CONFIGS[candidateId]) return BANGLE_CONFIGS[candidateId];
+    if (BANGLE_ALIAS_MAP[candidateId] && BANGLE_CONFIGS[BANGLE_ALIAS_MAP[candidateId]]) {
+      return BANGLE_CONFIGS[BANGLE_ALIAS_MAP[candidateId]];
+    }
+    for (const [alias, id] of Object.entries(BANGLE_ALIAS_MAP)) {
+      if (candidateId.includes(alias)) {
+        return BANGLE_CONFIGS[id];
+      }
+    }
+  }
+  return BANGLE_CONFIGS['prod-bangle-001'];
+}
+
+function applyBangleSplitShader(
+  material: THREE.Material,
+  uniforms: {
+    uBangleCenter: { value: THREE.Vector3 };
+    uCamPos: { value: THREE.Vector3 };
+    uBangleRadius: { value: number };
+    uBangleOpacity: { value: number };
+    uDebugMode: { value: number };
+  },
+  isFront: boolean,
+) {
+  material.customProgramCacheKey = () => (isFront ? 'bangle_front_v1' : 'bangle_back_v1');
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uBangleCenter = uniforms.uBangleCenter;
+    shader.uniforms.uCamPos = uniforms.uCamPos;
+    shader.uniforms.uBangleRadius = uniforms.uBangleRadius;
+    shader.uniforms.uBangleOpacity = uniforms.uBangleOpacity;
+    shader.uniforms.uDebugMode = uniforms.uDebugMode;
+
+    shader.vertexShader = `
+      varying vec3 vWorldPos;
+      ${shader.vertexShader}
+    `;
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <project_vertex>',
+      `
+      vWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+      #include <project_vertex>
+      `,
+    );
+
+    shader.fragmentShader = `
+      uniform vec3 uBangleCenter;
+      uniform vec3 uCamPos;
+      uniform float uBangleRadius;
+      uniform float uBangleOpacity;
+      uniform int uDebugMode;
+      varying vec3 vWorldPos;
+      ${shader.fragmentShader}
+    `;
+
+    if (isFront) {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        `
+        #include <dithering_fragment>
+        vec3 toCam = normalize(uCamPos - uBangleCenter);
+        float side = dot(vWorldPos - uBangleCenter, toCam);
+        float seam = max(0.02, 0.02 * uBangleRadius);
+        if (side < -seam) discard;
+        float frontMask = smoothstep(-seam, seam, side);
+        gl_FragColor.a *= frontMask * uBangleOpacity;
+        `,
+      );
+    } else {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <dithering_fragment>',
+        `
+        #include <dithering_fragment>
+        vec3 toCam = normalize(uCamPos - uBangleCenter);
+        float side = dot(vWorldPos - uBangleCenter, toCam);
+        float seam = max(0.02, 0.02 * uBangleRadius);
+        if (side > seam) discard;
+        float backMask = 1.0 - smoothstep(-seam, seam, side);
+        gl_FragColor.rgb *= 0.7;
+        if (uDebugMode == 1) {
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0, 0.15, 0.15), 0.75);
+          gl_FragColor.a = max(gl_FragColor.a, 0.45 * backMask);
+        }
+        gl_FragColor.a *= backMask * 0.16 * uBangleOpacity;
+        `,
+      );
+    }
+  };
+}
+
+export function buildBangle(
+  config: BangleConfig,
+  envTexture?: THREE.Texture | null,
+  uniforms?: {
+    uBangleCenter: { value: THREE.Vector3 };
+    uCamPos: { value: THREE.Vector3 };
+    uBangleRadius: { value: number };
+    uBangleOpacity: { value: number };
+    uDebugMode: { value: number };
+  },
+): {
+  group: THREE.Group;
+  frontBand: THREE.Mesh;
+  backBand: THREE.Mesh;
+  frontStuds: THREE.Mesh;
+  backStuds: THREE.Mesh;
+} {
   const group = new THREE.Group();
-  const gold = createGoldMaterial();
+  group.name = 'bangle_root';
 
-  // Main cuff encircling the wrist (tilted for 3D wrist perspective)
-  const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.075, 20, 48), gold);
-  cuff.rotation.x = Math.PI * 0.5;
+  const metalHex =
+    config.bandMetal === 'white'
+      ? 0xe5e4e2
+      : config.bandMetal === 'rose'
+        ? 0xb76e79
+        : 0xd4af37;
 
-  // Twin ornamental terminal knobs
-  const leftKnob = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), gold);
-  leftKnob.position.set(-0.8, 0, 0);
+  // 1. Shared Band Geometry
+  const bandRadius = 0.8;
+  const tubeRadius = config.bandThickness ?? 0.075;
+  const bandGeometry = new THREE.TorusGeometry(bandRadius, tubeRadius, 24, 64);
+  bandGeometry.rotateX(Math.PI * 0.5);
 
-  const rightKnob = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), gold);
-  rightKnob.position.set(0.8, 0, 0);
+  // a) FRONT Band: current material, opacity 1, depthWrite true, renderOrder 2
+  const bandFrontMat = new THREE.MeshStandardMaterial({
+    color: metalHex,
+    metalness: 0.96,
+    roughness: 0.18,
+    envMap: envTexture ?? null,
+    envMapIntensity: 1.25,
+    opacity: 1.0,
+    transparent: true,
+    depthWrite: true,
+  });
 
-  group.add(cuff, leftKnob, rightKnob);
-  return group;
+  // b) BACK Band: cloned material, transparent true, opacity 0.16, depthWrite false, renderOrder 1
+  const bandBackMat = bandFrontMat.clone();
+  bandBackMat.transparent = true;
+  bandBackMat.opacity = 0.16;
+  bandBackMat.depthWrite = false;
+
+  if (uniforms) {
+    applyBangleSplitShader(bandFrontMat, uniforms, true);
+    applyBangleSplitShader(bandBackMat, uniforms, false);
+  }
+
+  const frontBand = new THREE.Mesh(bandGeometry, bandFrontMat);
+  frontBand.name = 'bangle_band_front';
+  frontBand.renderOrder = 2;
+
+  const backBand = new THREE.Mesh(bandGeometry, bandBackMat);
+  backBand.name = 'bangle_band_back';
+  backBand.renderOrder = 1;
+
+  // 2. Shared Studs Geometry (pavé studs + terminal knobs along circumference)
+  const count = config.studCount ?? 20;
+  const studRadius = 0.045;
+  const baseStud = new THREE.SphereGeometry(studRadius, 12, 12);
+  const studGeos: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < count; i++) {
+    const theta = (i / count) * Math.PI * 2;
+    const x = Math.cos(theta) * bandRadius;
+    const z = Math.sin(theta) * bandRadius;
+    const g = baseStud.clone();
+    g.translate(x, 0, z);
+    studGeos.push(g);
+  }
+  baseStud.dispose();
+
+  const knobGeo = new THREE.SphereGeometry(0.11, 16, 16);
+  const leftKnob = knobGeo.clone();
+  leftKnob.translate(-bandRadius, 0, 0);
+  const rightKnob = knobGeo.clone();
+  rightKnob.translate(bandRadius, 0, 0);
+  knobGeo.dispose();
+  studGeos.push(leftKnob, rightKnob);
+
+  const studsGeometry = mergeGeometries(studGeos, false) || new THREE.BufferGeometry();
+  studGeos.forEach((g) => g.dispose());
+
+  const studColor = new THREE.Color(config.studColor || 0xffffff);
+
+  // a) FRONT Studs: current material, opacity 1, depthWrite true, renderOrder 2
+  const studFrontMat = new THREE.MeshPhysicalMaterial({
+    color: studColor,
+    metalness: 0.05,
+    roughness: 0.05,
+    transmission: 0.7,
+    ior: 2.4,
+    clearcoat: 1.0,
+    envMap: envTexture ?? null,
+    envMapIntensity: 1.5,
+    opacity: 1.0,
+    transparent: true,
+    depthWrite: true,
+  });
+
+  // b) BACK Studs: cloned material, transparent true, opacity 0.16, depthWrite false, renderOrder 1
+  const studBackMat = studFrontMat.clone();
+  studBackMat.transparent = true;
+  studBackMat.opacity = 0.16;
+  studBackMat.depthWrite = false;
+
+  if (uniforms) {
+    applyBangleSplitShader(studFrontMat, uniforms, true);
+    applyBangleSplitShader(studBackMat, uniforms, false);
+  }
+
+  const frontStuds = new THREE.Mesh(studsGeometry, studFrontMat);
+  frontStuds.name = 'bangle_studs_front';
+  frontStuds.renderOrder = 2;
+
+  const backStuds = new THREE.Mesh(studsGeometry, studBackMat);
+  backStuds.name = 'bangle_studs_back';
+  backStuds.renderOrder = 1;
+
+  // Both front and back meshes share the exact same transform via parent group
+  group.add(backBand);
+  group.add(backStuds);
+  group.add(frontBand);
+  group.add(frontStuds);
+
+  return {
+    group,
+    frontBand,
+    backBand,
+    frontStuds,
+    backStuds,
+  };
+}
+
+function createKadaBangle(): THREE.Group {
+  return buildBangle(BANGLE_CONFIGS['prod-bangle-001']).group;
 }
 
 function createPlaceholderBadge(_category: string): THREE.Group {
