@@ -924,9 +924,15 @@ export class ThreeRenderer {
       return;
     }
 
-    // 2. Targets: Position, Scale & Orientation (Placement, size, orientation preserved)
+    // 2. Targets: Position, Scale & Orientation (Placement & orientation preserved)
+    // Sizing calibrated to match previous standard (app.py & canvas2d-renderer):
+    // target_w = palm_w * 1.22, where palm_w = pose.scale * 100.
+    // Torus band has radius 0.8, so targetRadius = target_w / 2 = palm_w * 0.61.
+    // scale = targetRadius / 0.8 = (pose.scale * 100 * 0.61) / 0.8 = pose.scale * 76.25.
     const targetPos = new THREE.Vector3(pose.position.x, pose.position.y, 4);
-    const s = worldScaleForKind(kind, pose.scale);
+    const palmW = pose.scale * 100;
+    const targetW = Math.max(45, Math.min(360, palmW * 1.22));
+    const s = (targetW / 2) / 0.8;
     const yaw = pose.rotationY ?? pose.yaw ?? 0;
     const pitch = pose.rotationX ?? pose.pitch ?? 0;
     const roll = -pose.rotationZ;
@@ -1266,7 +1272,7 @@ function worldScaleForKind(kind: string | undefined, poseScale: number): number 
   if (k.includes('NOSE')) return s * 58;
   if (k.includes('NECKLACE') || k.includes('PENDANT') || k.includes('MANGALSUTRA')) return s * 34;
   if (k.includes('RING')) return s * 22;
-  if (k.includes('BANGLE') || k.includes('BRACELET') || k.includes('WATCH')) return s * 28;
+  if (k.includes('BANGLE') || k.includes('BRACELET') || k.includes('WATCH')) return s * 76.25;
   return s * 18;
 }
 
