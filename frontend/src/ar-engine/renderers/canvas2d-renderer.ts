@@ -139,7 +139,7 @@ export class Canvas2dRenderer {
       w = Math.max(14, Math.min(64, faceW * 0.12));
       h = w * aspect;
       originX = -w / 2;
-      originY = -h * 0.08; // Top hook attaches directly to earlobe
+      originY = -h * 0.10; // Hook loop attaches directly inside earlobe piercing
     } else if (isNose) {
       w = Math.max(10, Math.min(36, pose.scale * 14));
       h = w * aspect;
@@ -186,7 +186,7 @@ export class Canvas2dRenderer {
         // When yaw > 0 (looking right): ear on screen right (larger X) goes behind head (far side).
         // When yaw < 0 (looking left): ear on screen left (smaller X) goes behind head (far side).
         let isFarSide = false;
-        if (pos.z !== undefined && otherPos.z !== undefined && Math.abs(pos.z - otherPos.z) > 0.5) {
+        if (pos.z !== undefined && otherPos.z !== undefined && Math.abs(pos.z - otherPos.z) > 0.04) {
           isFarSide = pos.z > otherPos.z; // in MediaPipe, larger z is farther away
         } else {
           isFarSide = pose.yaw > 0 ? pos.x > otherPos.x : pos.x < otherPos.x;

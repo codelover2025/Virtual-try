@@ -319,7 +319,8 @@ export class FaceDetector implements ModelAdapter {
       let cd_x = -m01;
       let cd_y = m11;
       let cd_z = -m21;
-      if (cd_y < 0) {
+      // Align with landmark forehead->chin direction
+      if (cd_x * v_fc_norm.x + cd_y * v_fc_norm.y + cd_z * v_fc_norm.z < 0) {
         cd_x = -cd_x;
         cd_y = -cd_y;
         cd_z = -cd_z;
@@ -331,7 +332,8 @@ export class FaceDetector implements ModelAdapter {
       let cl_x = m00;
       let cl_y = -m10;
       let cl_z = m20;
-      if (cl_x < 0 && Math.abs(roll) < Math.PI / 2) {
+      // Align with landmark 234->454 vector
+      if (cl_x * v_rl_norm.x + cl_y * v_rl_norm.y + cl_z * v_rl_norm.z < 0) {
         cl_x = -cl_x;
         cl_y = -cl_y;
         cl_z = -cl_z;
@@ -345,19 +347,6 @@ export class FaceDetector implements ModelAdapter {
       let cb_x = -m02;
       let cb_y = m12;
       let cb_z = -m22;
-
-      // Invariant check: When head yaws, backward into the skull MUST point away from facing direction.
-      // Yaw > 0: face is turned right (+X), backward towards ear/skull MUST point screen left (cb_x <= 0).
-      // Yaw < 0: face is turned left (-X), backward towards ear/skull MUST point screen right (cb_x >= 0).
-      if (yaw > 0.05 && cb_x > 0) {
-        cb_x = -cb_x;
-        cb_y = -cb_y;
-        cb_z = -cb_z;
-      } else if (yaw < -0.05 && cb_x < 0) {
-        cb_x = -cb_x;
-        cb_y = -cb_y;
-        cb_z = -cb_z;
-      }
       const len_cb = Math.hypot(cb_x, cb_y, cb_z) || 1;
       u_back = { x: cb_x / len_cb, y: cb_y / len_cb, z: cb_z / len_cb };
     } else {
@@ -376,15 +365,7 @@ export class FaceDetector implements ModelAdapter {
       }
       u_down = v_fc_norm;
       u_left = v_rl_norm;
-
-      // Backward direction in fallback:
-      // When head yaws right (yaw > 0), face points right, backward points left (-X).
-      // When head yaws left (yaw < 0), face points left, backward points right (+X).
-      const backX = -Math.sin(yaw);
-      const backY = 0;
-      const backZ = -Math.cos(yaw);
-      const len_b = Math.hypot(backX, backY, backZ) || 1;
-      u_back = { x: backX / len_b, y: backY / len_b, z: backZ / len_b };
+      u_back = { x: 0, y: 0, z: 1 };
     }
 
     // Face width computed from tragus distance (app.py golden standard)
@@ -392,21 +373,39 @@ export class FaceDetector implements ModelAdapter {
       ? Math.hypot(rightTragus.x - leftTragus.x, rightTragus.y - leftTragus.y)
       : (leftEye && rightEye ? Math.hypot(rightEye.x - leftEye.x, rightEye.y - leftEye.y) * 1.8 : width * 0.35);
 
-    // ── Ear Anchors: 3D Head-Local Projection ─────────────────────────────
+    // ── Ear Anchors: Anatomical Earlobe Piercing Geometry ──────────────────
     // Anchors: Landmark 234 (right tragus) and Landmark 454 (left tragus).
-    // Anatomical earlobe piercing offsets in head-local 3D coordinates:
-    // - Downward along local Y: ~0.08 x faceHeight to reach the earlobe piercing point
-    // - Outward along local X: ~0.035 x faceHeight to center on the earlobe flesh
-    // - Backward along local Z: ~0.17 x faceHeight towards back of skull to align with ear cartilage in profile
-    const downDist = 0.08 * faceHeight;
-    const outDist  = 0.035 * faceHeight;
+    // Anatomical earlobe piercing offsets calibrated to reference (image 2):
+    // - Downward along local Y: ~0.050 x faceHeight to sit directly on the lobe flesh
+    // - Outward along local X: ~0.025 x faceHeight to center laterally on the lobe
+    // - Depth along local Z: 0.17 x faceHeight for 3D occlusion sorting
+    const downDist = 0.050 * faceHeight;
+    const outDist  = 0.025 * faceHeight;
     const backDist = 0.17 * faceHeight;
 
+    // Profile compensation:
+    // In frontal and slight-turn views (|yaw| <= 20 deg), profileShift is 0 so slight
+    // head movements have ZERO lateral drift and remain locked to the earlobes.
+    // In profile view (|yaw| > 20 deg), MediaPipe tracks the preauricular cheek border;
+    // the near ear sits behind the cheek border along the skull away from facing direction.
+    const YAW_20_DEG = (20 * Math.PI) / 180; // ~0.349 rad
+    const absYaw = Math.abs(yaw);
+    const profileFactor = absYaw > YAW_20_DEG
+      ? Math.min(1.0, (absYaw - YAW_20_DEG) / (0.75 - YAW_20_DEG))
+      : 0;
+    // Skull back direction along screen X in unmirrored frame:
+    // When yaw > 0 (turned right), back of skull is screen left (-X).
+    // When yaw < 0 (turned left), back of skull is screen right (+X).
+    const skullBackX = yaw > 0 ? -1 : (yaw < 0 ? 1 : 0);
+    const profileShiftX = skullBackX * profileFactor * (0.16 * faceHeight);
+
     // Right ear anchor (Landmark 234, subject's right): outward is -u_left
+    // In profile with yaw > 20 deg, right ear is the near ear facing camera.
     if (rightTragus) {
+      const nearShiftX = (yaw > YAW_20_DEG) ? profileShiftX : 0;
       named['RIGHT_EAR_LOBE'] = {
-        x: rightTragus.x + (u_down.x * downDist) - (u_left.x * outDist) + (u_back.x * backDist),
-        y: rightTragus.y + (u_down.y * downDist) - (u_left.y * outDist) + (u_back.y * backDist),
+        x: rightTragus.x + (u_down.x * downDist) - (u_left.x * outDist) + nearShiftX,
+        y: rightTragus.y + (u_down.y * downDist) - (u_left.y * outDist),
         z: (rightTragus.z ?? 0) + (u_down.z * downDist) - (u_left.z * outDist) + (u_back.z * backDist),
         name: 'RIGHT_EAR_LOBE',
       };
@@ -414,10 +413,12 @@ export class FaceDetector implements ModelAdapter {
     }
 
     // Left ear anchor (Landmark 454, subject's left): outward is +u_left
+    // In profile with yaw < -20 deg, left ear is the near ear facing camera.
     if (leftTragus) {
+      const nearShiftX = (yaw < -YAW_20_DEG) ? profileShiftX : 0;
       named['LEFT_EAR_LOBE'] = {
-        x: leftTragus.x + (u_down.x * downDist) + (u_left.x * outDist) + (u_back.x * backDist),
-        y: leftTragus.y + (u_down.y * downDist) + (u_left.y * outDist) + (u_back.y * backDist),
+        x: leftTragus.x + (u_down.x * downDist) + (u_left.x * outDist) + nearShiftX,
+        y: leftTragus.y + (u_down.y * downDist) + (u_left.y * outDist),
         z: (leftTragus.z ?? 0) + (u_down.z * downDist) + (u_left.z * outDist) + (u_back.z * backDist),
         name: 'LEFT_EAR_LOBE',
       };
@@ -594,23 +595,32 @@ export class FaceDetector implements ModelAdapter {
     const u_down_y = Math.cos(roll);
     const u_left_x = Math.cos(roll);
     const u_left_y = Math.sin(roll);
-    const backShiftX = -Math.sin(yaw) * (0.17 * faceHeight);
-    const downDist = 0.08 * faceHeight;
-    const outDist = 0.035 * faceHeight;
+    const downDist = 0.050 * faceHeight;
+    const outDist = 0.025 * faceHeight;
+
+    const YAW_20_DEG = (20 * Math.PI) / 180;
+    const absYaw = Math.abs(yaw);
+    const profileFactor = absYaw > YAW_20_DEG
+      ? Math.min(1.0, (absYaw - YAW_20_DEG) / (0.75 - YAW_20_DEG))
+      : 0;
+    const skullBackX = yaw > 0 ? -1 : (yaw < 0 ? 1 : 0);
+    const profileShiftX = skullBackX * profileFactor * (0.16 * faceHeight);
 
     if (named['RIGHT_EAR_TRAGUS']) {
+      const nearShiftX = (yaw > YAW_20_DEG) ? profileShiftX : 0;
       named['RIGHT_EAR_LOBE'] = {
         ...named['RIGHT_EAR_TRAGUS'],
-        x: named['RIGHT_EAR_TRAGUS'].x + (u_down_x * downDist) - (u_left_x * outDist) + backShiftX,
+        x: named['RIGHT_EAR_TRAGUS'].x + (u_down_x * downDist) - (u_left_x * outDist) + nearShiftX,
         y: named['RIGHT_EAR_TRAGUS'].y + (u_down_y * downDist) - (u_left_y * outDist),
         name: 'RIGHT_EAR_LOBE',
       };
       points.push(named['RIGHT_EAR_LOBE']);
     }
     if (named['LEFT_EAR_TRAGUS']) {
+      const nearShiftX = (yaw < -YAW_20_DEG) ? profileShiftX : 0;
       named['LEFT_EAR_LOBE'] = {
         ...named['LEFT_EAR_TRAGUS'],
-        x: named['LEFT_EAR_TRAGUS'].x + (u_down_x * downDist) + (u_left_x * outDist) + backShiftX,
+        x: named['LEFT_EAR_TRAGUS'].x + (u_down_x * downDist) + (u_left_x * outDist) + nearShiftX,
         y: named['LEFT_EAR_TRAGUS'].y + (u_down_y * downDist) + (u_left_y * outDist),
         name: 'LEFT_EAR_LOBE',
       };

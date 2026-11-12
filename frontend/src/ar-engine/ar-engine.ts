@@ -826,6 +826,8 @@ export class ArEngine {
         ? { x: width - pose.secondaryPosition.x, y: pose.secondaryPosition.y }
         : undefined,
       rotationZ: -pose.rotationZ,
+      yaw: pose.yaw !== undefined ? -pose.yaw : undefined,
+      rotationY: pose.rotationY !== undefined ? -pose.rotationY : undefined,
     };
   }
 

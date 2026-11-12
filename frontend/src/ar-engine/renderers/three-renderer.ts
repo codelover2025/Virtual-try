@@ -632,7 +632,7 @@ export class ThreeRenderer {
           : Math.max(0, 1 - (absYaw - YAW_20_DEG) / (YAW_45_DEG - YAW_20_DEG));
 
         let rootIsFar = false;
-        if (Math.abs(rootZ - secZ) > 0.5) {
+        if (Math.abs(rootZ - secZ) > 0.04) {
           rootIsFar = rootZ < secZ;
         } else {
           rootIsFar = pose.yaw > 0
@@ -1249,24 +1249,24 @@ function createGoldDropEarring(): THREE.Group {
     new THREE.TorusGeometry(0.12, 0.032, 16, 32, Math.PI), gold,
   );
   hook.rotation.z = Math.PI;
-  hook.position.y = 0.18;
+  hook.position.y = 0.0;
 
   const connector = new THREE.Mesh(
     new THREE.CylinderGeometry(0.025, 0.025, 0.12, 12), gold,
   );
-  connector.position.y = 0.02;
+  connector.position.y = -0.16;
 
   const bead = new THREE.Mesh(new THREE.SphereGeometry(0.15, 32, 32), gold);
-  bead.position.y = -0.06;
+  bead.position.y = -0.24;
 
   const stem = new THREE.Mesh(
     new THREE.CylinderGeometry(0.018, 0.025, 0.14, 12), gold,
   );
-  stem.position.y = -0.22;
+  stem.position.y = -0.40;
 
   const drop = new THREE.Mesh(new THREE.SphereGeometry(0.20, 32, 32), gold);
   drop.scale.set(0.78, 1.18, 0.78);
-  drop.position.y = -0.40;
+  drop.position.y = -0.58;
 
   group.add(hook, connector, bead, stem, drop);
   return group;
