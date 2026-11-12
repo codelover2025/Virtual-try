@@ -319,8 +319,7 @@ export class FaceDetector implements ModelAdapter {
       let cd_x = -m01;
       let cd_y = m11;
       let cd_z = -m21;
-      // Align with landmark forehead->chin direction
-      if (cd_x * v_fc_norm.x + cd_y * v_fc_norm.y + cd_z * v_fc_norm.z < 0) {
+      if (cd_y < 0) {
         cd_x = -cd_x;
         cd_y = -cd_y;
         cd_z = -cd_z;
@@ -332,8 +331,7 @@ export class FaceDetector implements ModelAdapter {
       let cl_x = m00;
       let cl_y = -m10;
       let cl_z = m20;
-      // Align with landmark 234->454 vector
-      if (cl_x * v_rl_norm.x + cl_y * v_rl_norm.y + cl_z * v_rl_norm.z < 0) {
+      if (cl_x < 0 && Math.abs(roll) < Math.PI / 2) {
         cl_x = -cl_x;
         cl_y = -cl_y;
         cl_z = -cl_z;
@@ -347,8 +345,15 @@ export class FaceDetector implements ModelAdapter {
       let cb_x = -m02;
       let cb_y = m12;
       let cb_z = -m22;
-      // Align with backwards vector (-v_fwd_geo)
-      if (cb_x * (-v_fwd_geo.x) + cb_y * (-v_fwd_geo.y) + cb_z * (-v_fwd_geo.z) < 0) {
+
+      // Invariant check: When head yaws, backward into the skull MUST point away from facing direction.
+      // Yaw > 0: face is turned right (+X), backward towards ear/skull MUST point screen left (cb_x <= 0).
+      // Yaw < 0: face is turned left (-X), backward towards ear/skull MUST point screen right (cb_x >= 0).
+      if (yaw > 0.05 && cb_x > 0) {
+        cb_x = -cb_x;
+        cb_y = -cb_y;
+        cb_z = -cb_z;
+      } else if (yaw < -0.05 && cb_x < 0) {
         cb_x = -cb_x;
         cb_y = -cb_y;
         cb_z = -cb_z;
@@ -372,16 +377,14 @@ export class FaceDetector implements ModelAdapter {
       u_down = v_fc_norm;
       u_left = v_rl_norm;
 
-      // Geometric cross-product for backwards vector: cross(u_left, u_down) = u_fwd
-      const fwd_x = u_left.y * u_down.z - u_left.z * u_down.y;
-      const fwd_y = u_left.z * u_down.x - u_left.x * u_down.z;
-      const fwd_z = u_left.x * u_down.y - u_left.y * u_down.x;
-      const len_fwd = Math.hypot(fwd_x, fwd_y, fwd_z) || 1;
-      let norm_fwd = { x: fwd_x / len_fwd, y: fwd_y / len_fwd, z: fwd_z / len_fwd };
-      if (norm_fwd.x * v_fwd_geo.x + norm_fwd.y * v_fwd_geo.y + norm_fwd.z * v_fwd_geo.z < 0) {
-        norm_fwd = { x: -norm_fwd.x, y: -norm_fwd.y, z: -norm_fwd.z };
-      }
-      u_back = { x: -norm_fwd.x, y: -norm_fwd.y, z: -norm_fwd.z };
+      // Backward direction in fallback:
+      // When head yaws right (yaw > 0), face points right, backward points left (-X).
+      // When head yaws left (yaw < 0), face points left, backward points right (+X).
+      const backX = -Math.sin(yaw);
+      const backY = 0;
+      const backZ = -Math.cos(yaw);
+      const len_b = Math.hypot(backX, backY, backZ) || 1;
+      u_back = { x: backX / len_b, y: backY / len_b, z: backZ / len_b };
     }
 
     // Face width computed from tragus distance (app.py golden standard)
