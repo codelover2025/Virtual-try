@@ -265,6 +265,7 @@ export class FaceDetector implements ModelAdapter {
 
     let u_down: { x: number; y: number; z: number };
     let u_left: { x: number; y: number; z: number };
+    let u_back: { x: number; y: number; z: number };
 
     // Geometric 3D vector from forehead to chin
     const v_fc = {
@@ -283,6 +284,13 @@ export class FaceDetector implements ModelAdapter {
     };
     const len_rl = Math.hypot(v_rl.x, v_rl.y, v_rl.z) || 1;
     const v_rl_norm = { x: v_rl.x / len_rl, y: v_rl.y / len_rl, z: v_rl.z / len_rl };
+
+    // Geometric forward vector (mid-ears to nose tip)
+    const v_fwd_geo = {
+      x: noseTip && rightTragus && leftTragus ? noseTip.x - (rightTragus.x + leftTragus.x) / 2 : 0,
+      y: noseTip && rightTragus && leftTragus ? noseTip.y - (rightTragus.y + leftTragus.y) / 2 : 0,
+      z: noseTip && rightTragus && leftTragus ? (noseTip.z ?? 0) - ((rightTragus.z ?? 0) + (leftTragus.z ?? 0)) / 2 : -1,
+    };
 
     if (matrix && matrix.length >= 16) {
       // Column-major 4x4 matrix from MediaPipe Tasks Vision FaceLandmarker
@@ -332,6 +340,21 @@ export class FaceDetector implements ModelAdapter {
       }
       const len_cl = Math.hypot(cl_x, cl_y, cl_z) || 1;
       u_left = { x: cl_x / len_cl, y: cl_y / len_cl, z: cl_z / len_cl };
+
+      // Local Z axis pointing backwards (into skull / back of head):
+      // Canonical +Z is forward out of face: [m02, -m12, m22] in screen space.
+      // Canonical -Z (backward towards back of head) is [-m02, m12, -m22].
+      let cb_x = -m02;
+      let cb_y = m12;
+      let cb_z = -m22;
+      // Align with backwards vector (-v_fwd_geo)
+      if (cb_x * (-v_fwd_geo.x) + cb_y * (-v_fwd_geo.y) + cb_z * (-v_fwd_geo.z) < 0) {
+        cb_x = -cb_x;
+        cb_y = -cb_y;
+        cb_z = -cb_z;
+      }
+      const len_cb = Math.hypot(cb_x, cb_y, cb_z) || 1;
+      u_back = { x: cb_x / len_cb, y: cb_y / len_cb, z: cb_z / len_cb };
     } else {
       if (leftEye && rightEye) {
         roll = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
@@ -348,6 +371,17 @@ export class FaceDetector implements ModelAdapter {
       }
       u_down = v_fc_norm;
       u_left = v_rl_norm;
+
+      // Geometric cross-product for backwards vector: cross(u_left, u_down) = u_fwd
+      const fwd_x = u_left.y * u_down.z - u_left.z * u_down.y;
+      const fwd_y = u_left.z * u_down.x - u_left.x * u_down.z;
+      const fwd_z = u_left.x * u_down.y - u_left.y * u_down.x;
+      const len_fwd = Math.hypot(fwd_x, fwd_y, fwd_z) || 1;
+      let norm_fwd = { x: fwd_x / len_fwd, y: fwd_y / len_fwd, z: fwd_z / len_fwd };
+      if (norm_fwd.x * v_fwd_geo.x + norm_fwd.y * v_fwd_geo.y + norm_fwd.z * v_fwd_geo.z < 0) {
+        norm_fwd = { x: -norm_fwd.x, y: -norm_fwd.y, z: -norm_fwd.z };
+      }
+      u_back = { x: -norm_fwd.x, y: -norm_fwd.y, z: -norm_fwd.z };
     }
 
     // Face width computed from tragus distance (app.py golden standard)
@@ -356,18 +390,21 @@ export class FaceDetector implements ModelAdapter {
       : (leftEye && rightEye ? Math.hypot(rightEye.x - leftEye.x, rightEye.y - leftEye.y) * 1.8 : width * 0.35);
 
     // ── Ear Anchors: 3D Head-Local Projection ─────────────────────────────
-    // Anchors: Landmark 234 (right) and Landmark 454 (left)
-    // Offset downward along the face's local Y axis by ~0.12 x face height to reach the lobe,
-    // and slightly outward along local X (~0.035 x face height).
-    const downDist = 0.12 * faceHeight;
-    const outDist = 0.035 * faceHeight;
+    // Anchors: Landmark 234 (right tragus) and Landmark 454 (left tragus).
+    // Anatomical earlobe offsets in head-local 3D coordinates:
+    // - Downward along local Y: ~0.18 x faceHeight to reach the bottom curve of the lobe
+    // - Outward along local X: ~0.065 x faceHeight to align with outer ear contour
+    // - Backward along local Z: ~0.19 x faceHeight towards back of skull to align with ear cartilage in profile
+    const downDist = 0.18 * faceHeight;
+    const outDist  = 0.065 * faceHeight;
+    const backDist = 0.19 * faceHeight;
 
     // Right ear anchor (Landmark 234, subject's right): outward is -u_left
     if (rightTragus) {
       named['RIGHT_EAR_LOBE'] = {
-        x: rightTragus.x + (u_down.x * downDist) - (u_left.x * outDist),
-        y: rightTragus.y + (u_down.y * downDist) - (u_left.y * outDist),
-        z: (rightTragus.z ?? 0) + (u_down.z * downDist) - (u_left.z * outDist),
+        x: rightTragus.x + (u_down.x * downDist) - (u_left.x * outDist) + (u_back.x * backDist),
+        y: rightTragus.y + (u_down.y * downDist) - (u_left.y * outDist) + (u_back.y * backDist),
+        z: (rightTragus.z ?? 0) + (u_down.z * downDist) - (u_left.z * outDist) + (u_back.z * backDist),
         name: 'RIGHT_EAR_LOBE',
       };
       points.push(named['RIGHT_EAR_LOBE']);
@@ -376,9 +413,9 @@ export class FaceDetector implements ModelAdapter {
     // Left ear anchor (Landmark 454, subject's left): outward is +u_left
     if (leftTragus) {
       named['LEFT_EAR_LOBE'] = {
-        x: leftTragus.x + (u_down.x * downDist) + (u_left.x * outDist),
-        y: leftTragus.y + (u_down.y * downDist) + (u_left.y * outDist),
-        z: (leftTragus.z ?? 0) + (u_down.z * downDist) + (u_left.z * outDist),
+        x: leftTragus.x + (u_down.x * downDist) + (u_left.x * outDist) + (u_back.x * backDist),
+        y: leftTragus.y + (u_down.y * downDist) + (u_left.y * outDist) + (u_back.y * backDist),
+        z: (leftTragus.z ?? 0) + (u_down.z * downDist) + (u_left.z * outDist) + (u_back.z * backDist),
         name: 'LEFT_EAR_LOBE',
       };
       points.push(named['LEFT_EAR_LOBE']);
@@ -554,13 +591,14 @@ export class FaceDetector implements ModelAdapter {
     const u_down_y = Math.cos(roll);
     const u_left_x = Math.cos(roll);
     const u_left_y = Math.sin(roll);
-    const downDist = 0.12 * faceHeight;
-    const outDist = 0.035 * faceHeight;
+    const backShiftX = -Math.sin(yaw) * (0.19 * faceHeight);
+    const downDist = 0.18 * faceHeight;
+    const outDist = 0.065 * faceHeight;
 
     if (named['RIGHT_EAR_TRAGUS']) {
       named['RIGHT_EAR_LOBE'] = {
         ...named['RIGHT_EAR_TRAGUS'],
-        x: named['RIGHT_EAR_TRAGUS'].x + (u_down_x * downDist) - (u_left_x * outDist),
+        x: named['RIGHT_EAR_TRAGUS'].x + (u_down_x * downDist) - (u_left_x * outDist) + backShiftX,
         y: named['RIGHT_EAR_TRAGUS'].y + (u_down_y * downDist) - (u_left_y * outDist),
         name: 'RIGHT_EAR_LOBE',
       };
@@ -569,7 +607,7 @@ export class FaceDetector implements ModelAdapter {
     if (named['LEFT_EAR_TRAGUS']) {
       named['LEFT_EAR_LOBE'] = {
         ...named['LEFT_EAR_TRAGUS'],
-        x: named['LEFT_EAR_TRAGUS'].x + (u_down_x * downDist) + (u_left_x * outDist),
+        x: named['LEFT_EAR_TRAGUS'].x + (u_down_x * downDist) + (u_left_x * outDist) + backShiftX,
         y: named['LEFT_EAR_TRAGUS'].y + (u_down_y * downDist) + (u_left_y * outDist),
         name: 'LEFT_EAR_LOBE',
       };
