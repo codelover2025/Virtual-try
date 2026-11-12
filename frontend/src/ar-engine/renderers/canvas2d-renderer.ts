@@ -139,7 +139,7 @@ export class Canvas2dRenderer {
       w = Math.max(14, Math.min(64, faceW * 0.12));
       h = w * aspect;
       originX = -w / 2;
-      originY = -h * 0.10; // Hook loop attaches directly inside earlobe piercing
+      originY = -h * 0.08; // Top hook attaches directly to earlobe piercing (app.py standard)
     } else if (isNose) {
       w = Math.max(10, Math.min(36, pose.scale * 14));
       h = w * aspect;
