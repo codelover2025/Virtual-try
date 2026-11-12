@@ -1,7 +1,25 @@
-import * as handPoseDetection from '@tensorflow-models/hand-pose-detection';
+import type * as handPoseDetection from '@tensorflow-models/hand-pose-detection';
 import type { ModelAdapter, PixelInput } from '../models/model-adapter.js';
 import type { LandmarkResult } from '../types.js';
 import { getModelPath, getWasmPath, MEDIAPIPE_VERSION } from '../models/model-paths.js';
+
+// Suppress benign TensorFlow Lite / Emscripten C++ stderr info logs in Next.js dev overlay
+if (typeof window !== 'undefined' && !(window as any).__tfliteLogFiltered) {
+  (window as any).__tfliteLogFiltered = true;
+  const originalError = window.console.error;
+  window.console.error = function (...args: any[]) {
+    const first = typeof args[0] === 'string' ? args[0] : '';
+    if (
+      first.startsWith('INFO:') ||
+      first.includes('Created TensorFlow Lite') ||
+      first.includes('XNNPACK delegate')
+    ) {
+      console.info(...args);
+      return;
+    }
+    originalError.apply(window.console, args);
+  };
+}
 
 /**
  * Finger joint pairs used to compute mid-point ring slots and direction vectors.
@@ -100,8 +118,9 @@ export class HandDetector implements ModelAdapter {
 
     // 2. Fallback to TF.js
     try {
-      this.detector = await handPoseDetection.createDetector(
-        handPoseDetection.SupportedModels.MediaPipeHands,
+      const hpd = await import('@tensorflow-models/hand-pose-detection');
+      this.detector = await hpd.createDetector(
+        hpd.SupportedModels.MediaPipeHands,
         {
           runtime: 'tfjs',
           modelType: 'lite',
@@ -110,8 +129,9 @@ export class HandDetector implements ModelAdapter {
       );
     } catch {
       try {
-        this.detector = await handPoseDetection.createDetector(
-          handPoseDetection.SupportedModels.MediaPipeHands,
+        const hpd = await import('@tensorflow-models/hand-pose-detection');
+        this.detector = await hpd.createDetector(
+          hpd.SupportedModels.MediaPipeHands,
           {
             runtime: 'tfjs',
             modelType: 'full',
@@ -255,9 +275,14 @@ export class HandDetector implements ModelAdapter {
     const wrist = named['wrist'] ?? points[0];
     if (wrist) named['WRIST'] = wrist;
 
-    named['HANDEDNESS'] = { x: (handedness ?? 'Right') === 'Left' ? 0 : 1, y: 0 };
+    const isRightHand = (handedness ?? 'Right') !== 'Left';
+    named['HANDEDNESS'] = { x: isRightHand ? 1 : 0, y: 0 };
 
-    // ── Compute ring slots and finger direction vectors ────────────────────
+    const indexMcp = named['index_finger_mcp'];
+    const pinkyMcp = named['pinky_finger_mcp'];
+    const middleMcp = named['middle_finger_mcp'];
+
+    // ── Compute ring slots, finger direction vectors & 3D orthonormal basis ─
     for (const [idxStr, [proxKey, distKey]] of Object.entries(FINGER_JOINTS)) {
       const p1 = named[proxKey];
       const p2 = named[distKey];
@@ -287,6 +312,79 @@ export class HandDetector implements ModelAdapter {
         name: `RING_ROT_${idx}`,
       };
 
+      // ── Orthonormal Basis & 3D Quaternion for Three.js Ring Try-On ───────
+      // 1. forward = normalize(PIP - MCP) (finger axis)
+      const fx = p2.x - p1.x;
+      const fy = p2.y - p1.y;
+      const fz = (p2.z ?? 0) - (p1.z ?? 0);
+      const fLen = Math.hypot(fx, fy, fz) || 1;
+      const forward = { x: fx / fLen, y: fy / fLen, z: fz / fLen };
+
+      // 2. up = palm normal (cross of 0->5 and 0->17), flipped to face camera
+      let up = { x: 0, y: 0, z: 1 };
+      let palmFacingCamera = false;
+      if (wrist && indexMcp && pinkyMcp) {
+        const v1x = indexMcp.x - wrist.x;
+        const v1y = indexMcp.y - wrist.y;
+        const v1z = (indexMcp.z ?? 0) - (wrist.z ?? 0);
+
+        const v2x = pinkyMcp.x - wrist.x;
+        const v2y = pinkyMcp.y - wrist.y;
+        const v2z = (pinkyMcp.z ?? 0) - (wrist.z ?? 0);
+
+        // cross(0->5, 0->17)
+        const cx = v1y * v2z - v1z * v2y;
+        const cy = v1z * v2x - v1x * v2z;
+        const cz = v1x * v2y - v1y * v2x;
+        const cLen = Math.hypot(cx, cy, cz) || 1;
+
+        let nx = cx / cLen;
+        let ny = cy / cLen;
+        let nz = cz / cLen;
+
+        // Palm facing detection: For right hand, 2D crossZ > 0 means palm facing camera; for left hand, crossZ < 0.
+        palmFacingCamera = isRightHand ? cz > 0 : cz < 0;
+
+        // "flipped to face camera" (+Z towards camera in screen space)
+        if (nz < 0) {
+          nx = -nx;
+          ny = -ny;
+          nz = -nz;
+        }
+        up = { x: nx, y: ny, z: nz };
+      }
+
+      // 3. right = cross(forward, up)
+      let rx = forward.y * up.z - forward.z * up.y;
+      let ry = forward.z * up.x - forward.x * up.z;
+      let rz = forward.x * up.y - forward.y * up.x;
+      const rLen = Math.hypot(rx, ry, rz);
+      let right = { x: 1, y: 0, z: 0 };
+      if (rLen > 1e-4) {
+        right = { x: rx / rLen, y: ry / rLen, z: rz / rLen };
+      }
+
+      // Re-orthogonalize up = cross(right, forward)
+      const ux = right.y * forward.z - right.z * forward.y;
+      const uy = right.z * forward.x - right.x * forward.z;
+      const uz = right.x * forward.y - right.y * forward.x;
+      const uLen = Math.hypot(ux, uy, uz) || 1;
+      up = { x: ux / uLen, y: uy / uLen, z: uz / uLen };
+
+      const quat = basisToQuaternion(right, forward, up);
+      named[`RING_QUAT_${idx}`] = {
+        x: quat[0],
+        y: quat[1],
+        z: quat[2],
+        w: quat[3],
+        name: `RING_QUAT_${idx}`,
+      } as any;
+      named[`RING_PALM_FACING_${idx}`] = {
+        x: palmFacingCamera ? 1 : 0,
+        y: 0,
+        name: `RING_PALM_FACING_${idx}`,
+      };
+
       // ── Finger curl detection ──────────────────────────────────────────
       // 0 = fully extended, 1 = fully curled
       const tipKey = distKey.replace('_pip', '_tip').replace('_ip', '_tip');
@@ -302,10 +400,6 @@ export class HandDetector implements ModelAdapter {
     }
 
     // ── Bangle / Bracelet anchor (anchored behind wrist bone along forearm, matching app.py) ──
-    const indexMcp = named['index_finger_mcp'];
-    const pinkyMcp = named['pinky_finger_mcp'];
-    const middleMcp = named['middle_finger_mcp'];
-
     if (wrist && middleMcp) {
       // Vector from middle MCP -> wrist (points down the forearm away from hand)
       const armDx = wrist.x - middleMcp.x;
@@ -437,4 +531,46 @@ export class HandDetector implements ModelAdapter {
       scaleRef,
     };
   }
+}
+
+function basisToQuaternion(
+  right: { x: number; y: number; z: number },
+  forward: { x: number; y: number; z: number },
+  up: { x: number; y: number; z: number },
+): [number, number, number, number] {
+  const m00 = right.x,   m01 = forward.x,   m02 = up.x;
+  const m10 = right.y,   m11 = forward.y,   m12 = up.y;
+  const m20 = right.z,   m21 = forward.z,   m22 = up.z;
+
+  const tr = m00 + m11 + m22;
+  let qx: number, qy: number, qz: number, qw: number;
+
+  if (tr > 0) {
+    const s = 0.5 / Math.sqrt(tr + 1.0);
+    qw = 0.25 / s;
+    qx = (m21 - m12) * s;
+    qy = (m02 - m20) * s;
+    qz = (m10 - m01) * s;
+  } else if (m00 > m11 && m00 > m22) {
+    const s = 2.0 * Math.sqrt(1.0 + m00 - m11 - m22);
+    qw = (m21 - m12) / s;
+    qx = 0.25 * s;
+    qy = (m01 + m10) / s;
+    qz = (m02 + m20) / s;
+  } else if (m11 > m22) {
+    const s = 2.0 * Math.sqrt(1.0 + m11 - m00 - m22);
+    qw = (m02 - m20) / s;
+    qx = (m01 + m10) / s;
+    qy = 0.25 * s;
+    qz = (m12 + m21) / s;
+  } else {
+    const s = 2.0 * Math.sqrt(1.0 + m22 - m00 - m11);
+    qw = (m10 - m01) / s;
+    qx = (m02 + m20) / s;
+    qy = (m12 + m21) / s;
+    qz = 0.25 * s;
+  }
+
+  const len = Math.hypot(qx, qy, qz, qw) || 1;
+  return [qx / len, qy / len, qz / len, qw / len];
 }

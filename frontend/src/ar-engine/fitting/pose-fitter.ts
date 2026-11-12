@@ -274,6 +274,81 @@ export class PoseFitter {
     const yaw = Number.isFinite(headYaw) ? (headYaw as number) : undefined;
     const pitch = Number.isFinite(headPitch) ? headPitch : undefined;
 
+    let ringQuaternion: [number, number, number, number] | undefined = undefined;
+    let ringSegment: PoseFit['ringSegment'] = undefined;
+
+    if (landmarks.kind === 'hand') {
+      const fIdx = this.defaults.fingerIndex ?? 3;
+      const rawQuat = landmarks.named[`RING_QUAT_${fIdx}`] as any;
+      if (rawQuat && Number.isFinite(rawQuat.w)) {
+        ringQuaternion = [rawQuat.x, rawQuat.y, rawQuat.z, rawQuat.w];
+      }
+
+      const mcp = landmarks.named['ring_finger_mcp'];
+      const pip = landmarks.named['ring_finger_pip'];
+      const p0 = landmarks.named['wrist'];
+      const p5 = landmarks.named['index_finger_mcp'];
+      const p17 = landmarks.named['pinky_finger_mcp'];
+      const segLen = landmarks.named[`RING_SEG_LEN_${fIdx}`]?.x ?? 48;
+
+      // Finger width computed from distance between landmarks 13 and 17 projected perpendicular to finger, with clamp
+      let fingerWidth = 32;
+      if (mcp && pip && p17) {
+        const fx = pip.x - mcp.x;
+        const fy = pip.y - mcp.y;
+        const fLen = Math.hypot(fx, fy);
+        if (fLen > 1e-4) {
+          const fnx = fx / fLen;
+          const fny = fy / fLen;
+          const vx = p17.x - mcp.x;
+          const vy = p17.y - mcp.y;
+          const dot = vx * fnx + vy * fny;
+          const perpx = vx - dot * fnx;
+          const perpy = vy - dot * fny;
+          const perpDist = Math.hypot(perpx, perpy);
+          fingerWidth = Math.max(18, Math.min(85, perpDist));
+        }
+      } else if (landmarks.named['FINGER_WIDTH']?.x) {
+        fingerWidth = Math.max(18, Math.min(85, landmarks.named['FINGER_WIDTH'].x));
+      }
+
+      // Palm normal dot product with camera direction (+Z)
+      let palmFacingDot = 0;
+      if (p0 && p5 && p17) {
+        const v1x = p5.x - p0.x;
+        const v1y = p5.y - p0.y;
+        const v1z = -((p5.z ?? 0) - (p0.z ?? 0));
+
+        const v2x = p17.x - p0.x;
+        const v2y = p17.y - p0.y;
+        const v2z = -((p17.z ?? 0) - (p0.z ?? 0));
+
+        const cx = v1y * v2z - v1z * v2y;
+        const cy = v1z * v2x - v1x * v2z;
+        const cz = v1x * v2y - v1y * v2x;
+        const cLen = Math.hypot(cx, cy, cz) || 1;
+
+        const isRightHand = (landmarks.named['HANDEDNESS']?.x ?? 1) === 1;
+        const rawZ = cz / cLen;
+        palmFacingDot = isRightHand ? -rawZ : rawZ;
+      }
+
+      if (mcp && pip) {
+        ringSegment = {
+          mcp: { x: mcp.x, y: mcp.y, z: mcp.z ?? 0 },
+          pip: { x: pip.x, y: pip.y, z: pip.z ?? 0 },
+          p0: p0 ? { x: p0.x, y: p0.y, z: p0.z ?? 0 } : undefined,
+          p5: p5 ? { x: p5.x, y: p5.y, z: p5.z ?? 0 } : undefined,
+          p17: p17 ? { x: p17.x, y: p17.y, z: p17.z ?? 0 } : undefined,
+          length: segLen,
+          width: fingerWidth,
+          sizeRatio: this.fineTuneScaleMul,
+          palmFacingCamera: palmFacingDot > 0.6,
+          palmFacingDot,
+        };
+      }
+    }
+
     return {
       position:          { x: this.smoothPos!.x, y: this.smoothPos!.y },
       secondaryPosition: this.smoothSecPos
@@ -288,6 +363,8 @@ export class PoseFitter {
       depthHint,
       yaw,
       pitch,
+      ringQuaternion,
+      ringSegment,
     };
   }
 

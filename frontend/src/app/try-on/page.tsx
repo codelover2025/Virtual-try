@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@vj/api-client';
 import { Button, PageLoader, EmptyState } from '@vj/ui';
@@ -10,6 +10,7 @@ import { ArrowLeft, Sparkles } from 'lucide-react';
 import type { JewelleryKind } from '@vj/shared';
 import { api } from '@/lib/api';
 import { TryOnExperience } from '@/features/try-on/TryOnExperience';
+import { useStudioStore, jewelleryKindToCategorySlug } from '@/stores/studio-store';
 import {
   cacheCatalogue,
   getCachedOrFallbackCatalogue,
@@ -18,9 +19,11 @@ import {
 } from '@/features/try-on/offline-catalog';
 
 function TryOnStudioContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const categoryParam = searchParams.get('category')?.toLowerCase();
   const rawKindParam = searchParams.get('kind')?.toUpperCase();
+  const { activeCategory, selectedItemId } = useStudioStore();
 
   const normalizedKind: JewelleryKind | undefined =
     rawKindParam === 'EARRING'
@@ -95,14 +98,32 @@ function TryOnStudioContent() {
     enabled: Boolean(featured?.id),
   });
 
+  const handleExitStudio = () => {
+    const cat = activeCategory && activeCategory !== 'all'
+      ? activeCategory
+      : targetKind
+        ? jewelleryKindToCategorySlug(targetKind)
+        : categoryParam || 'all';
+    const itemId = selectedItemId || featured?.id || null;
+    console.log('[Studio] CLOSE (route) - activeCategory:', cat, 'selectedItemId:', itemId);
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+    } else {
+      router.replace(`/?category=${cat}${itemId ? `&item=${itemId}` : ''}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="flex items-center justify-between border-b px-4 py-4 sm:px-6 bg-card/60 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="sm" className="rounded-full">
-            <Link href="/products">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Exit Studio
-            </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleExitStudio}
+            className="rounded-full cursor-pointer"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" /> Exit Studio
           </Button>
           <div className="h-4 w-px bg-border hidden sm:block" />
           <div className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-primary font-semibold">
@@ -121,10 +142,10 @@ function TryOnStudioContent() {
           <PageLoader label="Opening Virtual Studio…" />
         ) : productDetailQuery.data ? (
           <TryOnExperience
-            key={productDetailQuery.data.id}
             product={productDetailQuery.data}
             alternativeProducts={productsQuery.data?.items}
             initialKindFilter={targetKind ?? 'ALL'}
+            onClose={handleExitStudio}
           />
         ) : (
           <EmptyState

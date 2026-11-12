@@ -20,7 +20,13 @@ export type { QualityTier, AdaptiveMetrics } from './performance/adaptive-contro
 export { FpsMeter } from './performance/fps-meter.js';
 export type { FpsMetrics } from './performance/fps-meter.js';
 export { Canvas2dRenderer } from './renderers/canvas2d-renderer.js';
-export { ThreeRenderer } from './renderers/three-renderer.js';
+export {
+  ThreeRenderer,
+  buildRing,
+  RING_CONFIGS,
+  RING_ALIAS_MAP,
+  resolveRingConfig,
+} from './renderers/three-renderer.js';
 export { CaptureCompositor } from './capture/capture-compositor.js';
 export { loadOpenCv } from './opencv/opencv-loader.js';
 export { initTfBackend } from './models/tf-backend.js';

@@ -1,4 +1,63 @@
 import type { ProductDetailDto } from '@vj/types';
+import type { RingConfig } from '@vj/ar-engine';
+
+export const RING_CONFIGS: Record<string, RingConfig> = {
+  'prod-ring-001': {
+    id: 'prod-ring-001',
+    gemColor: '#FFFFFF',
+    gemShape: 'round',
+    gemScale: 1.0,
+    bandMetal: 'yellow',
+    bandThickness: 0.107,
+    hasHalo: false,
+    haloColor: '#FFFFFF',
+    accentStones: false,
+  },
+  'prod-ring-002': {
+    id: 'prod-ring-002',
+    gemColor: '#E0115F',
+    gemShape: 'princess',
+    gemScale: 1.08,
+    bandMetal: 'yellow',
+    bandThickness: 0.11,
+    hasHalo: false,
+    haloColor: '#FFFFFF',
+    accentStones: true,
+  },
+  'prod-ring-003': {
+    id: 'prod-ring-003',
+    gemColor: '#1E6FD9',
+    gemShape: 'round',
+    gemScale: 1.05,
+    bandMetal: 'white',
+    bandThickness: 0.105,
+    hasHalo: true,
+    haloColor: '#FFFFFF',
+    accentStones: true,
+  },
+  'prod-ring-004': {
+    id: 'prod-ring-004',
+    gemColor: '#2ECC71',
+    gemShape: 'emerald',
+    gemScale: 1.15,
+    bandMetal: 'yellow',
+    bandThickness: 0.125,
+    hasHalo: false,
+    haloColor: '#FFFFFF',
+    accentStones: false,
+  },
+  'prod-ring-005': {
+    id: 'prod-ring-005',
+    gemColor: '#9B59B6',
+    gemShape: 'pear',
+    gemScale: 1.12,
+    bandMetal: 'rose',
+    bandThickness: 0.115,
+    hasHalo: true,
+    haloColor: '#FFFFFF',
+    accentStones: true,
+  },
+};
 
 export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
   // ── Necklaces ─────────────────────────────────────────────────────────────
@@ -395,8 +454,8 @@ export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
     ],
     tryOnAsset: {
       id: 'asset-ring-001',
-      assetType: 'IMAGE_OVERLAY',
-      url: '/static/Image/Ring/ring_1.png',
+      assetType: 'PROCEDURAL',
+      url: 'procedural://ring?id=prod-ring-001',
       anchorProfile: { anchorType: 'FINGER_BASE', fingerIndex: 3 },
       defaultScale: 1.0,
       defaultRotationZ: 0,
@@ -404,7 +463,7 @@ export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
       fingerIndex: 3,
       isActive: true,
     },
-    metadata: {},
+    metadata: { ringConfig: RING_CONFIGS['prod-ring-001'] },
   },
   {
     id: 'prod-ring-002',
@@ -435,8 +494,8 @@ export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
     ],
     tryOnAsset: {
       id: 'asset-ring-002',
-      assetType: 'IMAGE_OVERLAY',
-      url: '/static/Image/Ring/ring_2.png',
+      assetType: 'PROCEDURAL',
+      url: 'procedural://ring?id=prod-ring-002',
       anchorProfile: { anchorType: 'FINGER_BASE', fingerIndex: 3 },
       defaultScale: 1.0,
       defaultRotationZ: 0,
@@ -444,7 +503,7 @@ export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
       fingerIndex: 3,
       isActive: true,
     },
-    metadata: {},
+    metadata: { ringConfig: RING_CONFIGS['prod-ring-002'] },
   },
   {
     id: 'prod-ring-003',
@@ -475,8 +534,8 @@ export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
     ],
     tryOnAsset: {
       id: 'asset-ring-003',
-      assetType: 'IMAGE_OVERLAY',
-      url: '/static/Image/Ring/ring_3.png',
+      assetType: 'PROCEDURAL',
+      url: 'procedural://ring?id=prod-ring-003',
       anchorProfile: { anchorType: 'FINGER_BASE', fingerIndex: 3 },
       defaultScale: 1.0,
       defaultRotationZ: 0,
@@ -484,7 +543,7 @@ export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
       fingerIndex: 3,
       isActive: true,
     },
-    metadata: {},
+    metadata: { ringConfig: RING_CONFIGS['prod-ring-003'] },
   },
   {
     id: 'prod-ring-004',
@@ -515,8 +574,8 @@ export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
     ],
     tryOnAsset: {
       id: 'asset-ring-004',
-      assetType: 'IMAGE_OVERLAY',
-      url: '/static/Image/Ring/ring_4.png',
+      assetType: 'PROCEDURAL',
+      url: 'procedural://ring?id=prod-ring-004',
       anchorProfile: { anchorType: 'FINGER_BASE', fingerIndex: 3 },
       defaultScale: 1.0,
       defaultRotationZ: 0,
@@ -524,7 +583,7 @@ export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
       fingerIndex: 3,
       isActive: true,
     },
-    metadata: {},
+    metadata: { ringConfig: RING_CONFIGS['prod-ring-004'] },
   },
   {
     id: 'prod-ring-005',
@@ -555,8 +614,8 @@ export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
     ],
     tryOnAsset: {
       id: 'asset-ring-005',
-      assetType: 'IMAGE_OVERLAY',
-      url: '/static/Image/Ring/ring_5.png',
+      assetType: 'PROCEDURAL',
+      url: 'procedural://ring?id=prod-ring-005',
       anchorProfile: { anchorType: 'FINGER_BASE', fingerIndex: 3 },
       defaultScale: 1.0,
       defaultRotationZ: 0,
@@ -564,7 +623,7 @@ export const FALLBACK_CATALOGUE: ProductDetailDto[] = [
       fingerIndex: 3,
       isActive: true,
     },
-    metadata: {},
+    metadata: { ringConfig: RING_CONFIGS['prod-ring-005'] },
   },
 
   // ── Bangles ───────────────────────────────────────────────────────────────

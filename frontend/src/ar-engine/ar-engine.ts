@@ -29,6 +29,7 @@ import type {
   JewelleryConfig,
   LandmarkResult,
   PoseFit,
+  RingConfig,
   TrackingStatus,
 } from './types.js';
 
@@ -51,6 +52,25 @@ const HAND_LANDMARK_KEYS = [
   'RING_SLOT_1', 'RING_SLOT_2', 'RING_SLOT_3',
   'index_finger_mcp', 'ring_finger_mcp',
 ];
+
+// Suppress benign TensorFlow Lite / Emscripten C++ stderr info logs (e.g. "INFO: Created TensorFlow Lite XNNPACK delegate for CPU.")
+// which are mapped to console.error by Emscripten and otherwise trigger Next.js 15 dev error overlay.
+if (typeof window !== 'undefined' && !(window as any).__tfliteLogFiltered) {
+  (window as any).__tfliteLogFiltered = true;
+  const originalError = window.console.error;
+  window.console.error = function (...args: any[]) {
+    const first = typeof args[0] === 'string' ? args[0] : '';
+    if (
+      first.startsWith('INFO:') ||
+      first.includes('Created TensorFlow Lite') ||
+      first.includes('XNNPACK delegate')
+    ) {
+      console.info(...args);
+      return;
+    }
+    originalError.apply(window.console, args);
+  };
+}
 
 /**
  * Phase 2 – Production AR try-on engine facade.
@@ -130,6 +150,12 @@ export class ArEngine {
     this.debugLandmarks = config.debugLandmarks ?? false;
     this.adaptive = new AdaptiveController(config.targetFps ?? 28);
 
+    if (typeof window !== 'undefined') {
+      (window as any).__arEngine = this;
+      (window as any).__toggleRingDebugAxes = () => this.toggleDebugAxes();
+      (window as any).__setRingDebugAxes = (s: boolean) => this.setDebugAxes(s);
+    }
+
     await initTfBackend();
 
     // Camera with permission recovery
@@ -198,21 +224,25 @@ export class ArEngine {
   async setJewellery(config: JewelleryConfig): Promise<void> {
     if (!this.host || !this.canvasRenderer) return;
 
-    // Fully clear previous active asset from both renderers
-    if (this.threeRenderer) {
-      this.threeRenderer.clearJewellery();
-    }
-    this.canvasRenderer.clearJewellery();
+    const isRingSwap = this.config?.jewelleryKind === 'RINGS' && config.jewelleryKind === 'RINGS';
 
-    // Update fitter for new kind / anchor.
-    const profile = AnchorRegistry.mergeProfile(config.jewelleryKind, config.anchorProfile);
-    this.fitter = new PoseFitter(profile, {
-      scale:         config.defaultScale    ?? 1,
-      rotationZ:     ((config.defaultRotationZ ?? 0) * Math.PI) / 180,
-      fingerIndex:   config.fingerIndex,
-      jewelleryKind: config.jewelleryKind,
-    });
-    this.fitter.setFineTune(this.fineTuneScale, this.fineTuneOffsetY);
+    if (!isRingSwap) {
+      // Fully clear previous active asset from both renderers
+      if (this.threeRenderer) {
+        this.threeRenderer.clearJewellery();
+      }
+      this.canvasRenderer.clearJewellery();
+
+      // Update fitter for new kind / anchor.
+      const profile = AnchorRegistry.mergeProfile(config.jewelleryKind, config.anchorProfile);
+      this.fitter = new PoseFitter(profile, {
+        scale:         config.defaultScale    ?? 1,
+        rotationZ:     ((config.defaultRotationZ ?? 0) * Math.PI) / 180,
+        fingerIndex:   config.fingerIndex,
+        jewelleryKind: config.jewelleryKind,
+      });
+      this.fitter.setFineTune(this.fineTuneScale, this.fineTuneOffsetY);
+    }
 
     // If kind changed, swap detector (lazy load only what is needed).
     const registration = AnchorRegistry.get(config.jewelleryKind);
@@ -613,6 +643,7 @@ export class ArEngine {
 
   is3DAsset(config?: JewelleryConfig | null): boolean {
     if (!config) return false;
+    if (config.jewelleryKind === 'RINGS') return true;
     const type = String(config.assetType);
     if (type === 'IMAGE_OVERLAY' || type === 'IMAGE_2D') return false;
     if (
@@ -631,6 +662,22 @@ export class ArEngine {
 
   getThreeRenderer(): ThreeRenderer | null {
     return this.threeRenderer;
+  }
+
+  setDebugAxes(show: boolean): void {
+    this.threeRenderer?.setDebugAxes(show);
+  }
+
+  toggleDebugAxes(): boolean {
+    return this.threeRenderer?.toggleDebugAxes() ?? false;
+  }
+
+  isDebugAxes(): boolean {
+    return this.threeRenderer?.isDebugAxes() ?? false;
+  }
+
+  switchRing(configOrId: RingConfig | string): void {
+    this.threeRenderer?.switchRing(configOrId);
   }
 
   getCanvasRenderer(): Canvas2dRenderer | null {
@@ -671,15 +718,25 @@ export class ArEngine {
 
       if (!this.threeRenderer) {
         this.threeRenderer = new ThreeRenderer(this.host.threeCanvas);
+        this.threeRenderer.setVideoSource(this.host.video);
         this.syncCanvasSizes();
       } else {
-        this.threeRenderer.clearJewellery();
+        this.threeRenderer.setVideoSource(this.host.video);
       }
 
-      await this.threeRenderer.loadModel(
-        config.assetUrl || `procedural://${config.jewelleryKind.toLowerCase()}`,
-        config.mirrorForOppositeEar ?? (config.jewelleryKind === 'EARRINGS'),
-      );
+      if (config.jewelleryKind === 'RINGS') {
+        const ringSpec = config.ringConfig || config.productId || config.assetUrl;
+        this.threeRenderer.switchRing(ringSpec);
+      } else {
+        this.threeRenderer.clearJewellery();
+        const modelUrl = (config.assetUrl?.endsWith('.glb') || config.assetUrl?.endsWith('.gltf'))
+          ? config.assetUrl
+          : `procedural://${config.jewelleryKind.toLowerCase()}`;
+        await this.threeRenderer.loadModel(
+          modelUrl,
+          config.mirrorForOppositeEar ?? (config.jewelleryKind === 'EARRINGS'),
+        );
+      }
     } else {
       // Clear 3D renderer completely so previous mesh does not remain frozen
       if (this.threeRenderer) {
@@ -708,7 +765,10 @@ export class ArEngine {
     if (!this.host?.threeCanvas) return;
     if (!this.threeRenderer) {
       this.threeRenderer = new ThreeRenderer(this.host.threeCanvas);
+      this.threeRenderer.setVideoSource(this.host.video);
       this.syncCanvasSizes();
+    } else {
+      this.threeRenderer.setVideoSource(this.host.video);
     }
     this.threeRenderer.loadProcedural(
       config.jewelleryKind.toLowerCase(),

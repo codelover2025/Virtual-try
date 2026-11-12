@@ -1,7 +1,25 @@
-import * as blazeface from '@tensorflow-models/blazeface';
+import type * as blazeface from '@tensorflow-models/blazeface';
 import type { ModelAdapter, PixelInput } from '../models/model-adapter.js';
 import type { LandmarkPoint, LandmarkResult } from '../types.js';
 import { getModelPath, getWasmPath, MEDIAPIPE_VERSION } from '../models/model-paths.js';
+
+// Suppress benign TensorFlow Lite / Emscripten C++ stderr info logs in Next.js dev overlay
+if (typeof window !== 'undefined' && !(window as any).__tfliteLogFiltered) {
+  (window as any).__tfliteLogFiltered = true;
+  const originalError = window.console.error;
+  window.console.error = function (...args: any[]) {
+    const first = typeof args[0] === 'string' ? args[0] : '';
+    if (
+      first.startsWith('INFO:') ||
+      first.includes('Created TensorFlow Lite') ||
+      first.includes('XNNPACK delegate')
+    ) {
+      console.info(...args);
+      return;
+    }
+    originalError.apply(window.console, args);
+  };
+}
 
 /**
  * Phase 2 – Production FaceDetector.
@@ -81,7 +99,8 @@ export class FaceDetector implements ModelAdapter {
     // 2. Load BlazeFace only if MediaPipe is unavailable
     if (!this.faceLandmarker && !this.blazeModel) {
       try {
-        this.blazeModel = await blazeface.load({ maxFaces: 1 });
+        const blazefaceModule = await import('@tensorflow-models/blazeface');
+        this.blazeModel = await blazefaceModule.load({ maxFaces: 1 });
       } catch (bfErr) {
         console.warn('BlazeFace fallback failed:', bfErr);
       }

@@ -23,6 +23,8 @@ export interface JewellerySelectorProps {
   onSelect: (item: JewellerySelectorItem) => void;
   className?: string;
   title?: string;
+  initialScrollLeft?: number;
+  onScrollChange?: (scrollLeft: number) => void;
 }
 
 export function JewellerySelector({
@@ -32,8 +34,21 @@ export function JewellerySelector({
   onSelect,
   className,
   title = 'Switch Piece in Studio',
+  initialScrollLeft,
+  onScrollChange,
 }: JewellerySelectorProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  // Restore switcher horizontal scroll position if provided
+  React.useEffect(() => {
+    if (scrollRef.current && typeof initialScrollLeft === 'number' && initialScrollLeft > 0) {
+      scrollRef.current.scrollLeft = initialScrollLeft;
+    }
+  }, [initialScrollLeft]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    onScrollChange?.(e.currentTarget.scrollLeft);
+  };
 
   return (
     <div className={cn('w-full rounded-2xl border bg-card/90 backdrop-blur-md p-3 shadow-lg', className)}>
@@ -49,6 +64,7 @@ export function JewellerySelector({
 
       <div
         ref={scrollRef}
+        onScroll={handleScroll}
         className="flex items-center gap-3 overflow-x-auto pb-1 pt-1 scrollbar-thin scrollbar-thumb-muted-foreground/20"
       >
         {items.map((item) => {

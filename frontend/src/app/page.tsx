@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
+  ArrowLeft,
   ArrowRight,
   Camera,
   CheckCircle2,
@@ -24,6 +25,8 @@ import { Navbar } from '@/components/layout/navbar';
 import { Footer } from '@/components/layout/footer';
 import { FALLBACK_CATALOGUE } from '@/features/try-on/fallback-catalogue';
 import { getCachedOrFallbackCatalogue } from '@/features/try-on/offline-catalog';
+import { useStudioStore, categorySlugToJewelleryKind } from '@/stores/studio-store';
+import { TryOnExperience } from '@/features/try-on/TryOnExperience';
 
 const stats = [
   { value: '30 FPS', label: 'Real-Time On-Device AR' },
@@ -102,8 +105,28 @@ const journeySteps = [
 ];
 
 export default function Home() {
-  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const {
+    activeCategory,
+    selectedItemId,
+    isStudioOpen,
+    setActiveCategory,
+    openStudio,
+    closeStudio,
+    initFromUrl,
+  } = useStudioStore();
+
   const [products, setProducts] = useState(FALLBACK_CATALOGUE);
+
+  // 1. LIFT STATE: Read initial state from URL & respond to browser forward/backward
+  useEffect(() => {
+    initFromUrl();
+
+    const handlePopState = () => {
+      initFromUrl();
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [initFromUrl]);
 
   // Sync with client cache after mount to prevent SSR hydration mismatch
   useEffect(() => {
@@ -114,9 +137,24 @@ export default function Home() {
   }, []);
 
   const filteredProducts = useMemo(() => {
-    if (selectedCategory === 'ALL') return products;
-    return products.filter((p) => p.jewelleryKind === selectedCategory);
-  }, [products, selectedCategory]);
+    if (!activeCategory || activeCategory === 'all') return products;
+    const kind = categorySlugToJewelleryKind(activeCategory);
+    if (kind === 'ALL') return products;
+    return products.filter((p) => p.jewelleryKind === kind);
+  }, [products, activeCategory]);
+
+  const studioProduct = useMemo(() => {
+    if (selectedItemId) {
+      const match = products.find((p) => p.id === selectedItemId || p.slug === selectedItemId);
+      if (match) return match;
+    }
+    if (activeCategory && activeCategory !== 'all') {
+      const kind = categorySlugToJewelleryKind(activeCategory);
+      const match = products.find((p) => p.jewelleryKind === kind);
+      if (match) return match;
+    }
+    return products[0];
+  }, [products, selectedItemId, activeCategory]);
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
@@ -155,13 +193,11 @@ export default function Home() {
 
               <div className="flex flex-wrap items-center gap-4 pt-2">
                 <Button
-                  asChild
                   size="lg"
+                  onClick={() => openStudio()}
                   className="rounded-full px-8 py-6 text-sm font-semibold shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:scale-105 transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
                 >
-                  <Link href="/try-on">
-                    <Camera className="mr-2 h-4 w-4" aria-hidden="true" /> Open Virtual Studio
-                  </Link>
+                  <Camera className="mr-2 h-4 w-4" aria-hidden="true" /> Open Virtual Studio
                 </Button>
                 <Button
                   asChild
@@ -232,10 +268,12 @@ export default function Home() {
                       <p className="text-xs font-semibold text-white">Live Camera Ready</p>
                       <p className="text-[11px] text-white/60">Experience fine jewellery pieces</p>
                     </div>
-                    <Button asChild size="sm" className="rounded-full text-xs bg-primary hover:bg-primary/90 text-primary-foreground">
-                      <Link href="/try-on">
-                        Explore Studio <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
-                      </Link>
+                    <Button
+                      size="sm"
+                      onClick={() => openStudio()}
+                      className="rounded-full text-xs bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer"
+                    >
+                      Explore Studio <ArrowRight className="ml-1 h-3 w-3" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
@@ -285,10 +323,13 @@ export default function Home() {
             {categorySpotlights.map((cat) => {
               const Icon = cat.icon;
               return (
-                <Link
+                <div
                   key={cat.kind}
-                  href={`/try-on?category=${cat.slug}`}
-                  className="group relative flex flex-col justify-between overflow-hidden rounded-3xl border bg-card p-6 shadow-sm hover:shadow-xl hover:border-primary/50 transition-all duration-300"
+                  onClick={() => {
+                    setActiveCategory(cat.slug);
+                    openStudio({ category: cat.slug });
+                  }}
+                  className="group relative flex flex-col justify-between overflow-hidden rounded-3xl border bg-card p-6 shadow-sm hover:shadow-xl hover:border-primary/50 transition-all duration-300 cursor-pointer"
                 >
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
@@ -318,7 +359,7 @@ export default function Home() {
                       </p>
                     </div>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>
@@ -342,19 +383,19 @@ export default function Home() {
             {/* Filter Tabs */}
             <div className="flex flex-wrap items-center gap-2">
               {[
-                { id: 'ALL', label: 'All Pieces' },
-                { id: 'EARRINGS', label: 'Earrings' },
-                { id: 'NECKLACE', label: 'Necklaces' },
-                { id: 'RINGS', label: 'Rings' },
-                { id: 'BANGLES', label: 'Bangles' },
-                { id: 'NOSE_RING', label: 'Nose Rings' },
+                { id: 'all', label: 'All Pieces' },
+                { id: 'earrings', label: 'Earrings' },
+                { id: 'necklaces', label: 'Necklaces' },
+                { id: 'rings', label: 'Rings' },
+                { id: 'bangles', label: 'Bangles' },
+                { id: 'nose-rings', label: 'Nose Rings' },
               ].map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setSelectedCategory(tab.id)}
+                  onClick={() => setActiveCategory(tab.id)}
                   className={`rounded-full px-4 py-2 text-xs font-medium transition-all focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none ${
-                    selectedCategory === tab.id
+                    activeCategory === tab.id
                       ? 'bg-primary text-primary-foreground shadow-md'
                       : 'bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
@@ -369,11 +410,14 @@ export default function Home() {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredProducts.map((product) => {
               const imageUrl = product.primaryImage?.url || '/assets/earrings-drop.svg';
+              const isSelected = selectedItemId === product.id;
               return (
-                <Link
+                <div
                   key={product.id}
-                  href={`/try-on/${product.id}`}
-                  className="group relative flex flex-col justify-between overflow-hidden rounded-3xl border bg-card shadow-sm hover:shadow-xl hover:border-primary/50 transition-all duration-300 cursor-pointer"
+                  onClick={() => openStudio({ item: product, itemId: product.id })}
+                  className={`group relative flex flex-col justify-between overflow-hidden rounded-3xl border bg-card shadow-sm hover:shadow-xl hover:border-primary/50 transition-all duration-300 cursor-pointer ${
+                    isSelected ? 'ring-2 ring-primary border-primary shadow-md' : ''
+                  }`}
                 >
                   <div>
                     {/* Thumbnail */}
@@ -418,7 +462,7 @@ export default function Home() {
                       View Atelier <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                     </span>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>
@@ -528,8 +572,8 @@ export default function Home() {
                 Connect with our master gemologists for high-definition 1-on-1 virtual walkthroughs, custom gemstone sourcing, and tailored bridal sets.
               </p>
               <div className="pt-2 flex flex-wrap gap-3">
-                <Button asChild className="rounded-full px-6">
-                  <Link href="/try-on">Enter AR Atelier</Link>
+                <Button onClick={() => openStudio()} className="rounded-full px-6 cursor-pointer">
+                  Enter AR Atelier
                 </Button>
                 <Button asChild variant="outline" className="rounded-full px-6">
                   <Link href="/products">Browse All Collections</Link>
@@ -542,6 +586,46 @@ export default function Home() {
 
       {/* 10. Footer */}
       <Footer />
+
+      {/* 11. Virtual Studio Overlay Modal (Keeps product list & page mounted, preserving scroll) */}
+      {isStudioOpen && studioProduct && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 overflow-y-auto bg-background"
+        >
+          <header className="sticky top-0 z-40 flex items-center justify-between border-b px-4 py-3 sm:px-6 bg-card/90 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={closeStudio}
+                className="rounded-full hover:bg-muted text-foreground cursor-pointer"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" /> Exit Studio
+              </Button>
+              <div className="h-4 w-px bg-border hidden sm:block" />
+              <div className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-primary font-semibold">
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>Virtual Fitting Studio</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground hidden sm:block">
+              Category: <span className="font-semibold text-primary capitalize">{activeCategory}</span>
+            </p>
+          </header>
+
+          <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+            <TryOnExperience
+              product={studioProduct}
+              alternativeProducts={products}
+              initialKindFilter={categorySlugToJewelleryKind(activeCategory)}
+              onClose={closeStudio}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

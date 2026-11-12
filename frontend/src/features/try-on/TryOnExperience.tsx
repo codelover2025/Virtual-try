@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArEngine, detectorForKind } from '@vj/ar-engine';
 import { queryKeys } from '@vj/api-client';
@@ -14,6 +14,10 @@ import {
   WifiOff,
   Sliders,
   RotateCcw,
+  ArrowLeft,
+  Camera,
+  CameraOff,
+  Loader2,
 } from 'lucide-react';
 import {
   Button,
@@ -32,6 +36,7 @@ import type { TryOnAnalyticsEvent } from '@vj/api-client';
 import { api } from '@/lib/api';
 import { assetCache } from '@/lib/asset-cache';
 import { useTryOnStore } from '@/stores/try-on-store';
+import { useStudioStore } from '@/stores/studio-store';
 import { toJewelleryConfig, uploadCapture } from './try-on-bridge';
 import {
   cacheCatalogue,
@@ -46,12 +51,14 @@ export interface TryOnExperienceProps {
   product: ProductDetailDto;
   alternativeProducts?: ProductListItemDto[];
   initialKindFilter?: JewelleryKind | 'ALL';
+  onClose?: () => void;
 }
 
 export function TryOnExperience({
   product: initialProduct,
   alternativeProducts,
   initialKindFilter = 'ALL',
+  onClose,
 }: TryOnExperienceProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -61,6 +68,7 @@ export function TryOnExperience({
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const threeRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<ArEngine | null>(null);
+  const isStartingRef = useRef(false);
 
   const [hud, setHud] = useState<CameraHud>({ status: 'IDLE', fps: 0 });
   const [starting, setStarting] = useState(false);
@@ -85,6 +93,8 @@ export function TryOnExperience({
     setMirrorOn,
   } = useTryOnStore();
 
+  const { switcherScrollPos, setSwitcherScrollPos } = useStudioStore();
+
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [fineTuneScale, setFineTuneScale] = useState(1.0);
   const [fineTuneY, setFineTuneY] = useState(0);
@@ -101,15 +111,46 @@ export function TryOnExperience({
     engineRef.current?.setFineTune(1.0, 0);
   };
 
+  const [debugAxes, setDebugAxes] = useState(false);
+  const handleToggleDebugAxes = useCallback(() => {
+    setDebugAxes((prev) => {
+      const next = !prev;
+      engineRef.current?.setDebugAxes(next);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'x' || e.key === 'X') {
+        handleToggleDebugAxes();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleToggleDebugAxes]);
+
   const isDebugMode =
     typeof window !== 'undefined' &&
     (new URLSearchParams(window.location.search).get('debug') === '1' ||
       new URLSearchParams(window.location.search).get('debug') === 'true');
 
-  // If initialProduct changes externally (e.g. navigation)
+  // Clean shutdown when component unmounts
   useEffect(() => {
+    return () => {
+      isStartingRef.current = false;
+      engineRef.current?.stop();
+      engineRef.current = null;
+    };
+  }, []);
+
+  // If initialProduct changes externally (e.g. navigation or item choice)
+  useEffect(() => {
+    if (currentProduct.id === initialProduct.id) return;
+    stopCamera();
     setCurrentProduct(initialProduct);
-  }, [initialProduct]);
+  }, [initialProduct.id]);
 
   useEffect(() => {
     setKindFilter(initialKindFilter);
@@ -267,6 +308,8 @@ export function TryOnExperience({
   // Start Camera & AR tracking
   async function startCamera() {
     if (!videoRef.current || !overlayRef.current || !threeRef.current) return;
+    if (isStartingRef.current || running) return;
+    isStartingRef.current = true;
     setStarting(true);
     setHud((prev) => ({ ...prev, error: undefined }));
     try {
@@ -328,7 +371,12 @@ export function TryOnExperience({
         }
       });
 
-      const config = await toJewelleryConfig(currentProduct.jewelleryKind, asset);
+      const config = await toJewelleryConfig(
+        currentProduct.jewelleryKind,
+        asset,
+        currentProduct.id,
+        (currentProduct.metadata as any)?.ringConfig,
+      );
       await engine.start(
         {
           video: videoRef.current,
@@ -365,13 +413,16 @@ export function TryOnExperience({
       setRunning(false);
     } finally {
       setStarting(false);
+      isStartingRef.current = false;
     }
   }
 
   function stopCamera() {
+    isStartingRef.current = false;
     engineRef.current?.stop();
     engineRef.current = null;
     setRunning(false);
+    setStarting(false);
     setTracking(false);
     setHud({ status: 'IDLE', fps: 0, error: undefined });
   }
@@ -395,12 +446,15 @@ export function TryOnExperience({
     engineRef.current?.setMirrored(next);
   }
 
-  // Handle switching jewellery piece in-studio
+  // Handle switching jewellery piece in-studio: every time user chooses any jewellery,
+  // close the camera session and present the "Open Camera" option for the newly chosen piece.
   async function handleSelectPiece(item: JewellerySelectorItem) {
     if (item.id === currentProduct.id) return;
     setSwitchingPieceId(item.id);
     try {
-      toast.info(`Fitting ${item.name}…`);
+      // Cleanly stop any running camera session so the user gets the "Open Camera" option
+      stopCamera();
+
       let detail: ProductDetailDto;
       try {
         detail = await api.catalog.getProduct(item.id);
@@ -412,25 +466,22 @@ export function TryOnExperience({
       setCurrentProduct(detail);
       handleResetFineTune();
 
-      // Update URL silently without full navigation
-      startTransition(() => {
-        router.replace(`/try-on/${detail.id}`);
-      });
+      // 5. SESSION CONTINUITY: update selectedItemId and activeCategory together
+      useStudioStore.getState().selectPieceInStudio(detail);
 
-      // If camera is running, re-configure the AR engine with new asset
-      if (engineRef.current && running) {
-        await engineRef.current.setJewellery(
-          await toJewelleryConfig(detail.jewelleryKind, detail.tryOnAsset),
-        );
-        if (!isOfflineMode) {
-          pendingEvents.current.push({
-            type: 'product_swap',
-            value: detail.id,
-            meta: { jewelleryKind: detail.jewelleryKind },
-          });
-        }
-        toast.success(`Now wearing ${detail.name}`);
+      // If running on standalone /try-on route, keep route in sync without page unmount
+      if (typeof window !== 'undefined' && window.location.pathname.startsWith('/try-on')) {
+        window.history.replaceState(null, '', `/try-on/${detail.id}`);
       }
+
+      if (!isOfflineMode) {
+        pendingEvents.current.push({
+          type: 'product_swap',
+          value: detail.id,
+          meta: { jewelleryKind: detail.jewelleryKind },
+        });
+      }
+      toast.info(`Selected ${detail.name}. Click "Open Camera" to try on.`);
     } catch (err) {
       toast.error('Could not switch jewellery item');
     } finally {
@@ -525,6 +576,16 @@ export function TryOnExperience({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
         <div>
           <div className="flex items-center gap-2">
+            {onClose && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className="rounded-full gap-1.5 text-xs text-muted-foreground hover:text-foreground h-7 px-2.5 mr-1"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> Exit Studio
+              </Button>
+            )}
             <Badge variant="outline" className="border-primary/40 text-primary">
               Live Fitting
             </Badge>
@@ -536,6 +597,18 @@ export function TryOnExperience({
             <span className="text-xs text-muted-foreground uppercase tracking-widest font-mono">
               Session: {sessionId ? sessionId.slice(0, 8) : 'Direct'}
             </span>
+            <button
+              type="button"
+              onClick={handleToggleDebugAxes}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-mono border transition-colors cursor-pointer ${
+                debugAxes
+                  ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
+                  : 'border-white/10 bg-white/5 text-muted-foreground hover:text-foreground'
+              }`}
+              title="Toggle 3D Ring AxesHelper (X key: Red=X, Green=Y dorsal, Blue=Z finger)"
+            >
+              Axes [X]: {debugAxes ? 'ON' : 'OFF'}
+            </button>
           </div>
           <h1
             data-testid="current-product-name"
@@ -546,6 +619,31 @@ export function TryOnExperience({
         </div>
 
         <div className="flex items-center gap-2">
+          {running ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={stopCamera}
+              className="rounded-full gap-1.5 text-xs text-muted-foreground hover:text-foreground h-8 px-3 cursor-pointer"
+            >
+              <CameraOff className="h-3.5 w-3.5 text-amber-400" /> Close Camera
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={startCamera}
+              disabled={starting}
+              className="rounded-full gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90 h-8 px-3.5 shadow-sm cursor-pointer"
+            >
+              {starting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Camera className="h-3.5 w-3.5" />
+              )}
+              {starting ? 'Connecting…' : 'Open Camera'}
+            </Button>
+          )}
+
           <Button
             variant="ghost"
             size="sm"
@@ -608,6 +706,8 @@ export function TryOnExperience({
               selectedId={currentProduct.id}
               loadingId={switchingPieceId}
               onSelect={handleSelectPiece}
+              initialScrollLeft={switcherScrollPos}
+              onScrollChange={setSwitcherScrollPos}
             />
           </div>
         </div>
