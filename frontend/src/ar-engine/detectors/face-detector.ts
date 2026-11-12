@@ -375,29 +375,30 @@ export class FaceDetector implements ModelAdapter {
 
     // ── Ear Anchors: Anatomical Earlobe Piercing Geometry ──────────────────
     // Anchors: Landmark 234 (right tragus) and Landmark 454 (left tragus).
-    // Anatomical earlobe piercing offsets calibrated to golden app.py standard & reference (image 2):
-    // - Downward along local Y: 0.115 x faceWidth to hang naturally from the bottom lobe
-    // - Outward along local X: 0.025 x faceWidth to center laterally on the lobe
-    // - Depth along local Z: 0.17 x faceWidth for 3D occlusion sorting
-    const downDist = 0.115 * faceWidth;
-    const outDist  = 0.025 * faceWidth;
-    const backDist = 0.17 * faceWidth;
+    // In frontal view, downDist is ~0.104 x faceHeight (matching app.py 0.115 x faceWidth).
+    // In side profile view, the entire un-foreshortened ear auricle is exposed, so
+    // the earlobe piercing point sits at ~0.150 x faceHeight below the tragus.
+    const YAW_20_DEG = (20 * Math.PI) / 180; // ~0.349 rad
+    const YAW_45_DEG = (45 * Math.PI) / 180; // ~0.785 rad
+    const absYaw = Math.abs(yaw);
+    const profileFactor = absYaw > YAW_20_DEG
+      ? Math.min(1.0, (absYaw - YAW_20_DEG) / (YAW_45_DEG - YAW_20_DEG))
+      : 0;
+
+    const downDist = (0.104 + 0.046 * profileFactor) * faceHeight;
+    const outDist  = 0.025 * faceHeight * (1.0 - profileFactor * 0.6);
+    const backDist = 0.17 * faceHeight;
 
     // Profile compensation:
     // In frontal and slight-turn views (|yaw| <= 20 deg), profileShift is 0 so slight
     // head movements have ZERO lateral drift and remain locked to the earlobes.
     // In profile view (|yaw| > 20 deg), MediaPipe tracks the preauricular cheek border;
     // the near ear sits behind the cheek border along the skull away from facing direction.
-    const YAW_20_DEG = (20 * Math.PI) / 180; // ~0.349 rad
-    const absYaw = Math.abs(yaw);
-    const profileFactor = absYaw > YAW_20_DEG
-      ? Math.min(1.0, (absYaw - YAW_20_DEG) / (0.75 - YAW_20_DEG))
-      : 0;
     // Skull back direction along screen X in unmirrored frame:
     // When yaw > 0 (turned right), back of skull is screen left (-X).
     // When yaw < 0 (turned left), back of skull is screen right (+X).
     const skullBackX = yaw > 0 ? -1 : (yaw < 0 ? 1 : 0);
-    const profileShiftX = skullBackX * profileFactor * (0.16 * faceWidth);
+    const profileShiftX = skullBackX * profileFactor * (0.095 * faceHeight);
 
     // Right ear anchor (Landmark 234, subject's right): outward is -u_left
     // In profile with yaw > 20 deg, right ear is the near ear facing camera.
@@ -595,16 +596,19 @@ export class FaceDetector implements ModelAdapter {
     const u_down_y = Math.cos(roll);
     const u_left_x = Math.cos(roll);
     const u_left_y = Math.sin(roll);
-    const downDist = 0.115 * faceWidth;
-    const outDist = 0.025 * faceWidth;
 
     const YAW_20_DEG = (20 * Math.PI) / 180;
+    const YAW_45_DEG = (45 * Math.PI) / 180;
     const absYaw = Math.abs(yaw);
     const profileFactor = absYaw > YAW_20_DEG
-      ? Math.min(1.0, (absYaw - YAW_20_DEG) / (0.75 - YAW_20_DEG))
+      ? Math.min(1.0, (absYaw - YAW_20_DEG) / (YAW_45_DEG - YAW_20_DEG))
       : 0;
+
+    const downDist = (0.104 + 0.046 * profileFactor) * faceHeight;
+    const outDist = 0.025 * faceHeight * (1.0 - profileFactor * 0.6);
+
     const skullBackX = yaw > 0 ? -1 : (yaw < 0 ? 1 : 0);
-    const profileShiftX = skullBackX * profileFactor * (0.16 * faceWidth);
+    const profileShiftX = skullBackX * profileFactor * (0.095 * faceHeight);
 
     if (named['RIGHT_EAR_TRAGUS']) {
       const nearShiftX = (yaw > YAW_20_DEG) ? profileShiftX : 0;
