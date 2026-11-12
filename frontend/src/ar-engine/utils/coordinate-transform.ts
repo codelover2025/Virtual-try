@@ -99,9 +99,9 @@ export function mapPoseToCanvas(
 
   return {
     ...pose,
-    position: { x: mappedPos.x, y: mappedPos.y },
+    position: { x: mappedPos.x, y: mappedPos.y, z: mappedPos.z },
     secondaryPosition: mappedSecPos
-      ? { x: mappedSecPos.x, y: mappedSecPos.y }
+      ? { x: mappedSecPos.x, y: mappedSecPos.y, z: mappedSecPos.z }
       : undefined,
     scale: pose.scale * scaleFactor,
     rotationZ: options.isMirrored ? -pose.rotationZ : pose.rotationZ,

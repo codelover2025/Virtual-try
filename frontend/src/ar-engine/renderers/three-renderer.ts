@@ -603,7 +603,7 @@ export class ThreeRenderer {
       const headRadius = headDist * 0.55;
       this.occluder.visible = true;
       this.occluder.position.set(midX, midY - headRadius * 0.05, 0);
-      this.occluder.scale.set(headRadius * 0.95, headRadius * 1.35, headRadius * 1.1);
+      this.occluder.scale.set(headRadius * 0.88, headRadius * 1.25, headRadius * 0.90);
       this.occluder.rotation.y = pose.yaw ?? 0;
       this.occluder.rotation.x = pose.pitch ?? 0;
       this.occluder.rotation.z = -pose.rotationZ;
@@ -611,41 +611,50 @@ export class ThreeRenderer {
       this.occluder.visible = false;
     }
 
-    // Far-side earring fade when head turns past ~35 degrees (|yaw| > 0.61 rad)
+    // Depth in Three.js coordinate system (+Z towards camera):
+    // MediaPipe -z is towards camera, so Three.js Z = -MediaPipe_z.
+    const rootZ = pose.position.z !== undefined ? -pose.position.z : 4;
+    const secZ = pose.secondaryPosition?.z !== undefined ? -pose.secondaryPosition.z : 4;
+
+    // Head yaw fading thresholds:
+    // |yaw| < 20 deg: show both earrings.
+    // 20-45 deg: fade the far-side earring toward 0 opacity.
+    // > 45 deg: hide the far earring completely, keep the near one attached.
     let rootOpacity = this.currentOpacity;
     let secOpacity  = this.currentOpacity;
     if (pose.secondaryPosition && pose.yaw !== undefined) {
-      const FAR_YAW_THRESHOLD = 0.61; // ~35 deg
-      const FAR_YAW_MAX = 0.85;       // ~48.7 deg
+      const YAW_20_DEG = (20 * Math.PI) / 180; // ~0.349 rad
+      const YAW_45_DEG = (45 * Math.PI) / 180; // ~0.785 rad
       const absYaw = Math.abs(pose.yaw);
-      if (absYaw > FAR_YAW_THRESHOLD) {
-        const fade = Math.max(0, 1 - (absYaw - FAR_YAW_THRESHOLD) / (FAR_YAW_MAX - FAR_YAW_THRESHOLD));
-        const primaryIsSmallerX = pose.position.x < pose.secondaryPosition.x;
-        if (pose.yaw > 0) {
-          if (primaryIsSmallerX) {
-            rootOpacity *= fade;
-          } else {
-            secOpacity *= fade;
-          }
+      if (absYaw > YAW_20_DEG) {
+        const fade = absYaw >= YAW_45_DEG
+          ? 0
+          : Math.max(0, 1 - (absYaw - YAW_20_DEG) / (YAW_45_DEG - YAW_20_DEG));
+
+        let rootIsFar = false;
+        if (Math.abs(rootZ - secZ) > 0.5) {
+          rootIsFar = rootZ < secZ;
         } else {
-          if (primaryIsSmallerX) {
-            secOpacity *= fade;
-          } else {
-            rootOpacity *= fade;
-          }
+          rootIsFar = pose.yaw > 0
+            ? pose.position.x > pose.secondaryPosition.x
+            : pose.position.x < pose.secondaryPosition.x;
+        }
+
+        if (rootIsFar) {
+          rootOpacity *= fade;
+        } else {
+          secOpacity *= fade;
         }
       }
     }
 
-    // Apply primary. Keep jewellery in a thin overlay slab so landmark-z
-    // does not make metal swim toward/away from the camera.
+    // Apply primary.
     const s = worldScaleForKind(kind, pose.scale);
     const yaw = pose.rotationY ?? pose.yaw ?? 0;
     const pitch = pose.rotationX ?? pose.pitch ?? 0;
-    const earPush = Math.max(-14, Math.min(14, yaw * 16));
     if (rootOpacity > 0.01) {
       this.root.visible = true;
-      this.root.position.set(pose.position.x, pose.position.y, 4 + earPush);
+      this.root.position.set(pose.position.x, pose.position.y, rootZ);
       this.root.rotation.set(pitch, yaw, -pose.rotationZ);
       this.root.scale.setScalar(s);
       this._setGroupOpacity(this.root, rootOpacity);
@@ -659,7 +668,7 @@ export class ThreeRenderer {
       this.secondary.position.set(
         pose.secondaryPosition.x,
         pose.secondaryPosition.y,
-        4 - earPush,
+        secZ,
       );
       this.secondary.rotation.set(pitch, yaw, -pose.rotationZ);
       this.secondary.scale.setScalar(s);

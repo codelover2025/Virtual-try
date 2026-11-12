@@ -209,10 +209,10 @@ export class FaceDetector implements ModelAdapter {
     };
 
     // ── Key MediaPipe Facial Indices ──────────────────────────────────────
-    // 234/454 sit on the cheek/tragus. Blend with lower-jaw points so drop
-    // earrings hang from the lobe instead of the side of the face.
-    addIdx('LEFT_EAR_TRAGUS', 234);
-    addIdx('RIGHT_EAR_TRAGUS', 454);
+    // Landmark 234: Subject's right ear tragus / cheek
+    // Landmark 454: Subject's left ear tragus / cheek
+    addIdx('RIGHT_EAR_TRAGUS', 234);
+    addIdx('LEFT_EAR_TRAGUS', 454);
     addIdx('LEFT_JAW_NEAR_EAR', 132);
     addIdx('RIGHT_JAW_NEAR_EAR', 361);
     addIdx('JAWLINE_LEFT', 172);
@@ -248,21 +248,106 @@ export class FaceDetector implements ModelAdapter {
     const noseTip = named['NOSE_TIP'];
     const chin = named['CHIN'];
 
-    const leftTragus = named['LEFT_EAR_TRAGUS'];
-    const rightTragus = named['RIGHT_EAR_TRAGUS'];
+    const rightTragus = named['RIGHT_EAR_TRAGUS']; // Landmark 234 (subject's right)
+    const leftTragus = named['LEFT_EAR_TRAGUS'];   // Landmark 454 (subject's left)
     const forehead = named['FOREHEAD_CENTER'];
     const faceHeight = forehead && chin
       ? Math.max(40, Math.hypot(chin.x - forehead.x, chin.y - forehead.y))
       : height * 0.28;
 
-    // Head orientation roll angle computed from eye line (Landmark 33 & 263 / pupils)
+    // ── Head Pose & 3D Local Basis Vectors ──────────────────────────────────
+    // Head-local axes: downward along the face's local Y axis, and outward along local X.
+    // Computed from the 3D facial transformation matrix (res.facialTransformationMatrixes)
+    // and aligned to 3D landmarks so they follow head pitch, yaw, and roll without jitter.
     let roll = 0;
+    let pitch = 0;
+    let yaw = 0;
+
+    let u_down: { x: number; y: number; z: number };
+    let u_left: { x: number; y: number; z: number };
+
+    // Geometric 3D vector from forehead to chin
+    const v_fc = {
+      x: chin && forehead ? chin.x - forehead.x : 0,
+      y: chin && forehead ? chin.y - forehead.y : 1,
+      z: chin && forehead ? (chin.z ?? 0) - (forehead.z ?? 0) : 0,
+    };
+    const len_fc = Math.hypot(v_fc.x, v_fc.y, v_fc.z) || 1;
+    const v_fc_norm = { x: v_fc.x / len_fc, y: v_fc.y / len_fc, z: v_fc.z / len_fc };
+
+    // Geometric 3D vector from right ear (234) to left ear (454)
+    const v_rl = {
+      x: leftTragus && rightTragus ? leftTragus.x - rightTragus.x : 1,
+      y: leftTragus && rightTragus ? leftTragus.y - rightTragus.y : 0,
+      z: leftTragus && rightTragus ? (leftTragus.z ?? 0) - (rightTragus.z ?? 0) : 0,
+    };
+    const len_rl = Math.hypot(v_rl.x, v_rl.y, v_rl.z) || 1;
+    const v_rl_norm = { x: v_rl.x / len_rl, y: v_rl.y / len_rl, z: v_rl.z / len_rl };
+
     if (matrix && matrix.length >= 16) {
+      // Column-major 4x4 matrix from MediaPipe Tasks Vision FaceLandmarker
+      // Col 0: [m00, m10, m20] = Local X axis (subject's left)
+      // Col 1: [m01, m11, m21] = Local Y axis (head UP)
+      // Col 2: [m02, m12, m22] = Local Z axis (facing direction / out of face)
+      const m00 = Number(matrix[0] ?? 1);
       const m10 = Number(matrix[1] ?? 0);
+      const m20 = Number(matrix[2] ?? 0);
+
+      const m01 = Number(matrix[4] ?? 0);
       const m11 = Number(matrix[5] ?? 1);
-      roll = Math.atan2(m10, m11);
-    } else if (leftEye && rightEye) {
-      roll = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
+      const m21 = Number(matrix[6] ?? 0);
+
+      const m02 = Number(matrix[8] ?? 0);
+      const m12 = Number(matrix[9] ?? 0);
+      const m22 = Number(matrix[10] ?? 1);
+
+      roll  = Math.atan2(m10, m11);
+      pitch = Math.asin(Math.max(-1, Math.min(1, -m12)));
+      yaw   = Math.atan2(m02, m22);
+
+      // Downward along face's local Y axis in screen space:
+      // Canonical Y is UP. Downward along face is -canonical_Y.
+      // In screen coordinates (+Y is downwards, +Y_screen = -Y_cam).
+      let cd_x = -m01;
+      let cd_y = m11;
+      let cd_z = -m21;
+      // Align with landmark forehead->chin direction
+      if (cd_x * v_fc_norm.x + cd_y * v_fc_norm.y + cd_z * v_fc_norm.z < 0) {
+        cd_x = -cd_x;
+        cd_y = -cd_y;
+        cd_z = -cd_z;
+      }
+      const len_cd = Math.hypot(cd_x, cd_y, cd_z) || 1;
+      u_down = { x: cd_x / len_cd, y: cd_y / len_cd, z: cd_z / len_cd };
+
+      // Local X axis (subject's left, pointing towards landmark 454):
+      let cl_x = m00;
+      let cl_y = -m10;
+      let cl_z = m20;
+      // Align with landmark 234->454 vector
+      if (cl_x * v_rl_norm.x + cl_y * v_rl_norm.y + cl_z * v_rl_norm.z < 0) {
+        cl_x = -cl_x;
+        cl_y = -cl_y;
+        cl_z = -cl_z;
+      }
+      const len_cl = Math.hypot(cl_x, cl_y, cl_z) || 1;
+      u_left = { x: cl_x / len_cl, y: cl_y / len_cl, z: cl_z / len_cl };
+    } else {
+      if (leftEye && rightEye) {
+        roll = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
+      }
+      if (noseTip && chin && leftEye) {
+        const midEyeY = (leftEye.y + (rightEye?.y ?? leftEye.y)) / 2;
+        const noseRatio = (noseTip.y - midEyeY) / Math.max(1, chin.y - midEyeY);
+        pitch = Math.max(-1, Math.min(1, (noseRatio - 0.45) * 4));
+      }
+      if (noseTip && leftTragus && rightTragus) {
+        const earMidX = (leftTragus.x + rightTragus.x) / 2;
+        const earDist = Math.abs(leftTragus.x - rightTragus.x);
+        yaw = earDist > 0 ? (noseTip.x - earMidX) / (earDist * 0.5) : 0;
+      }
+      u_down = v_fc_norm;
+      u_left = v_rl_norm;
     }
 
     // Face width computed from tragus distance (app.py golden standard)
@@ -270,32 +355,33 @@ export class FaceDetector implements ModelAdapter {
       ? Math.hypot(rightTragus.x - leftTragus.x, rightTragus.y - leftTragus.y)
       : (leftEye && rightEye ? Math.hypot(rightEye.x - leftEye.x, rightEye.y - leftEye.y) * 1.8 : width * 0.35);
 
-    // Unit vectors pointing outward from face and downward along face (app.py golden standard)
-    const ux_out_r = -Math.cos(roll);
-    const uy_out_r = -Math.sin(roll);
-    const ux_out_l = Math.cos(roll);
-    const uy_out_l = Math.sin(roll);
-    const ux_down = -Math.sin(roll);
-    const uy_down = Math.cos(roll);
+    // ── Ear Anchors: 3D Head-Local Projection ─────────────────────────────
+    // Anchors: Landmark 234 (right) and Landmark 454 (left)
+    // Offset downward along the face's local Y axis by ~0.12 x face height to reach the lobe,
+    // and slightly outward along local X (~0.035 x face height).
+    const downDist = 0.12 * faceHeight;
+    const outDist = 0.035 * faceHeight;
 
-    // Earlobe anchors calibrated exactly to app.py (outward 0.025 * faceWidth, downward 0.13 * faceWidth)
-    if (leftTragus) {
-      named['LEFT_EAR_LOBE'] = {
-        x: leftTragus.x + (ux_out_r * 0.025 * faceWidth) + (ux_down * 0.13 * faceWidth),
-        y: leftTragus.y + (uy_out_r * 0.025 * faceWidth) + (uy_down * 0.13 * faceWidth),
-        z: leftTragus.z,
-        name: 'LEFT_EAR_LOBE',
-      };
-      points.push(named['LEFT_EAR_LOBE']);
-    }
+    // Right ear anchor (Landmark 234, subject's right): outward is -u_left
     if (rightTragus) {
       named['RIGHT_EAR_LOBE'] = {
-        x: rightTragus.x + (ux_out_l * 0.025 * faceWidth) + (ux_down * 0.13 * faceWidth),
-        y: rightTragus.y + (uy_out_l * 0.025 * faceWidth) + (uy_down * 0.13 * faceWidth),
-        z: rightTragus.z,
+        x: rightTragus.x + (u_down.x * downDist) - (u_left.x * outDist),
+        y: rightTragus.y + (u_down.y * downDist) - (u_left.y * outDist),
+        z: (rightTragus.z ?? 0) + (u_down.z * downDist) - (u_left.z * outDist),
         name: 'RIGHT_EAR_LOBE',
       };
       points.push(named['RIGHT_EAR_LOBE']);
+    }
+
+    // Left ear anchor (Landmark 454, subject's left): outward is +u_left
+    if (leftTragus) {
+      named['LEFT_EAR_LOBE'] = {
+        x: leftTragus.x + (u_down.x * downDist) + (u_left.x * outDist),
+        y: leftTragus.y + (u_down.y * downDist) + (u_left.y * outDist),
+        z: (leftTragus.z ?? 0) + (u_down.z * downDist) + (u_left.z * outDist),
+        name: 'LEFT_EAR_LOBE',
+      };
+      points.push(named['LEFT_EAR_LOBE']);
     }
 
     // Necklace & Neck base anchors from chin (Landmark 152 + 0.08 * faceWidth, matching app.py)
@@ -314,30 +400,6 @@ export class FaceDetector implements ModelAdapter {
       };
       named['NECKLACE_ANCHOR'] = named['NECK_BASE'];
       points.push(named['NECK_BASE'], named['COLLARBONE']);
-    }
-
-    // Head orientation angles
-    let pitch = 0;
-    let yaw = 0;
-
-    if (matrix && matrix.length >= 16) {
-      const m02 = Number(matrix[8] ?? 0);
-      const m12 = Number(matrix[9] ?? 0);
-      const m22 = Number(matrix[10] ?? 1);
-
-      pitch = Math.asin(Math.max(-1, Math.min(1, -m12)));
-      yaw = Math.atan2(m02, m22);
-    } else {
-      if (noseTip && chin && leftEye) {
-        const midEyeY = (leftEye.y + (rightEye?.y ?? leftEye.y)) / 2;
-        const noseRatio = (noseTip.y - midEyeY) / Math.max(1, chin.y - midEyeY);
-        pitch = Math.max(-1, Math.min(1, (noseRatio - 0.45) * 4));
-      }
-      if (noseTip && named['LEFT_EAR_LOBE'] && named['RIGHT_EAR_LOBE']) {
-        const earMidX = (named['LEFT_EAR_LOBE'].x + named['RIGHT_EAR_LOBE'].x) / 2;
-        const earDist = Math.abs(named['LEFT_EAR_LOBE'].x - named['RIGHT_EAR_LOBE'].x);
-        yaw = earDist > 0 ? (noseTip.x - earMidX) / (earDist * 0.5) : 0;
-      }
     }
 
     named['HEAD_ROLL'] = { x: roll, y: pitch, name: 'HEAD_ROLL' };
@@ -488,23 +550,30 @@ export class FaceDetector implements ModelAdapter {
       points.push(named['CHIN'], named['NECK_BASE'], named['COLLARBONE']);
     }
 
-    if (named['LEFT_EAR_TRAGUS']) {
-      named['LEFT_EAR_LOBE'] = {
-        ...named['LEFT_EAR_TRAGUS'],
-        x: named['LEFT_EAR_TRAGUS'].x - 0.025 * faceWidth,
-        y: named['LEFT_EAR_TRAGUS'].y + 0.13 * faceWidth,
-        name: 'LEFT_EAR_LOBE',
-      };
-      points.push(named['LEFT_EAR_LOBE']);
-    }
+    const u_down_x = -Math.sin(roll);
+    const u_down_y = Math.cos(roll);
+    const u_left_x = Math.cos(roll);
+    const u_left_y = Math.sin(roll);
+    const downDist = 0.12 * faceHeight;
+    const outDist = 0.035 * faceHeight;
+
     if (named['RIGHT_EAR_TRAGUS']) {
       named['RIGHT_EAR_LOBE'] = {
         ...named['RIGHT_EAR_TRAGUS'],
-        x: named['RIGHT_EAR_TRAGUS'].x + 0.025 * faceWidth,
-        y: named['RIGHT_EAR_TRAGUS'].y + 0.13 * faceWidth,
+        x: named['RIGHT_EAR_TRAGUS'].x + (u_down_x * downDist) - (u_left_x * outDist),
+        y: named['RIGHT_EAR_TRAGUS'].y + (u_down_y * downDist) - (u_left_y * outDist),
         name: 'RIGHT_EAR_LOBE',
       };
       points.push(named['RIGHT_EAR_LOBE']);
+    }
+    if (named['LEFT_EAR_TRAGUS']) {
+      named['LEFT_EAR_LOBE'] = {
+        ...named['LEFT_EAR_TRAGUS'],
+        x: named['LEFT_EAR_TRAGUS'].x + (u_down_x * downDist) + (u_left_x * outDist),
+        y: named['LEFT_EAR_TRAGUS'].y + (u_down_y * downDist) + (u_left_y * outDist),
+        name: 'LEFT_EAR_LOBE',
+      };
+      points.push(named['LEFT_EAR_LOBE']);
     }
 
     // Scale reference: IPD

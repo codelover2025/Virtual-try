@@ -515,9 +515,27 @@ export class ArEngine {
           if (is3d && this.threeRenderer) {
             this.threeRenderer.render(renderPose, kind);
           } else if (!is3d && this.canvasRenderer) {
-            this.canvasRenderer.drawJewellery(renderPose, false, kind);
+            // Sort by depth (z) so far earring renders first and near earring renders in front
             if (renderPose.secondaryPosition) {
-              this.canvasRenderer.drawJewellery(renderPose, true, kind);
+              const rz = renderPose.position.z;
+              const sz = renderPose.secondaryPosition.z;
+              let primaryIsFar = false;
+              if (rz !== undefined && sz !== undefined && Math.abs(rz - sz) > 0.5) {
+                primaryIsFar = rz > sz; // in MediaPipe, larger z is farther
+              } else if (renderPose.yaw !== undefined) {
+                primaryIsFar = renderPose.yaw > 0
+                  ? renderPose.position.x > renderPose.secondaryPosition.x
+                  : renderPose.position.x < renderPose.secondaryPosition.x;
+              }
+              if (primaryIsFar) {
+                this.canvasRenderer.drawJewellery(renderPose, false, kind);
+                this.canvasRenderer.drawJewellery(renderPose, true, kind);
+              } else {
+                this.canvasRenderer.drawJewellery(renderPose, true, kind);
+                this.canvasRenderer.drawJewellery(renderPose, false, kind);
+              }
+            } else {
+              this.canvasRenderer.drawJewellery(renderPose, false, kind);
             }
           }
         } else if (this.is3DAsset(this.config) && this.threeRenderer) {

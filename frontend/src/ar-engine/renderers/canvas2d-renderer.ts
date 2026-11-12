@@ -169,17 +169,29 @@ export class Canvas2dRenderer {
 
     let alpha = this.currentOpacity * (pose.confidence > 0 ? Math.min(1, pose.confidence + 0.3) : 1);
 
-    // When head yaw exceeds ~35 degrees, fade out earring on the far side
+    // Head yaw fading thresholds for earrings:
+    // |yaw| < 20 deg: show both earrings.
+    // 20-45 deg: fade the far-side earring toward 0 opacity.
+    // > 45 deg: hide the far earring completely, keep the near one attached.
     if (isEarring && pose.secondaryPosition && pose.yaw !== undefined) {
-      const FAR_YAW_THRESHOLD = 0.61; // ~35 deg
-      const FAR_YAW_MAX = 0.85;       // ~48.7 deg
+      const YAW_20_DEG = (20 * Math.PI) / 180; // ~0.349 rad
+      const YAW_45_DEG = (45 * Math.PI) / 180; // ~0.785 rad
       const absYaw = Math.abs(pose.yaw);
-      if (absYaw > FAR_YAW_THRESHOLD) {
-        const fade = Math.max(0, 1 - (absYaw - FAR_YAW_THRESHOLD) / (FAR_YAW_MAX - FAR_YAW_THRESHOLD));
+      if (absYaw > YAW_20_DEG) {
+        const fade = absYaw >= YAW_45_DEG
+          ? 0
+          : Math.max(0, 1 - (absYaw - YAW_20_DEG) / (YAW_45_DEG - YAW_20_DEG));
         const otherPos = secondary ? pose.position : pose.secondaryPosition;
-        // In image coordinates, yaw > 0 is facing right -> left side (smaller X) is occluded
-        // yaw < 0 is facing left -> right side (larger X) is occluded
-        const isFarSide = pose.yaw > 0 ? pos.x < otherPos.x : pos.x > otherPos.x;
+
+        // When yaw > 0 (looking right): ear on screen right (larger X) goes behind head (far side).
+        // When yaw < 0 (looking left): ear on screen left (smaller X) goes behind head (far side).
+        let isFarSide = false;
+        if (pos.z !== undefined && otherPos.z !== undefined && Math.abs(pos.z - otherPos.z) > 0.5) {
+          isFarSide = pos.z > otherPos.z; // in MediaPipe, larger z is farther away
+        } else {
+          isFarSide = pose.yaw > 0 ? pos.x > otherPos.x : pos.x < otherPos.x;
+        }
+
         if (isFarSide) {
           alpha *= fade;
         }

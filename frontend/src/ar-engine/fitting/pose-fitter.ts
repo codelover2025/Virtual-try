@@ -17,8 +17,10 @@ export type PoseFitterOptions = {
 type SpringState = {
   x: number;
   y: number;
+  z?: number;
   vx: number;
   vy: number;
+  vz?: number;
 };
 
 /**
@@ -117,7 +119,21 @@ export class PoseFitter {
       primaryKey = `RING_SLOT_${this.defaults.fingerIndex}`;
     }
 
-    const primary = landmarks.named[primaryKey];
+    let primary = landmarks.named[primaryKey];
+    let secondary = this.profile.secondaryAnchor
+      ? landmarks.named[this.profile.secondaryAnchor]
+      : undefined;
+
+    // For earrings: if one ear is not detected (e.g. extreme side view / occlusion)
+    // but the other is detected, attach try-on to the detected ear.
+    if (this.isEarringFit(primaryKey)) {
+      if (!primary && secondary) {
+        primary = secondary;
+        secondary = undefined;
+        primaryKey = this.profile.secondaryAnchor!;
+      }
+    }
+
     if (!primary) {
       this.visibilityAlpha = Math.max(0, this.visibilityAlpha - 0.1);
       return invisible;
@@ -135,11 +151,6 @@ export class PoseFitter {
     } else {
       this.visibilityAlpha = Math.min(1, this.visibilityAlpha + 0.25);
     }
-
-    // ── Secondary anchor ──────────────────────────────────────────────────
-    const secondary = this.profile.secondaryAnchor
-      ? landmarks.named[this.profile.secondaryAnchor]
-      : undefined;
 
     // ── Scale computation ─────────────────────────────────────────────────
     const liveScale = this.resolveLiveScale(landmarks);
@@ -167,8 +178,9 @@ export class PoseFitter {
     targetScale = Math.min(maxS, Math.max(minS, targetScale * this.fineTuneScaleMul));
 
     // ── Offset ────────────────────────────────────────────────────────────
-    const ox = (this.profile.offset?.x ?? 0) * liveScale;
-    const oy = (this.profile.offset?.y ?? 0) * liveScale + this.fineTuneOffsetY;
+    const isEarring = this.isEarringFit(primaryKey);
+    let ox = (this.profile.offset?.x ?? 0) * liveScale;
+    let oy = (this.profile.offset?.y ?? 0) * liveScale;
 
     // ── Rotation ──────────────────────────────────────────────────────────
     // Do not use atan2(secondary - primary) for ears/nose: the inter-ear line
@@ -179,7 +191,7 @@ export class PoseFitter {
     const headPitch =
       landmarks.named['HEAD_ROLL']?.y ?? landmarks.named['HEAD_YAW']?.y ?? 0;
 
-    if (this.isEarringFit(primaryKey)) {
+    if (isEarring) {
       const roll = Number.isFinite(headRoll) ? (headRoll as number) : 0;
       // Studs rotate fully with head roll (1.0); drop earrings track head roll with subtle natural hang (0.20, matching app.py dangle_angle = roll * 0.2)
       const isStud = (this.profile as any).earringType === 'STUD';
@@ -234,13 +246,52 @@ export class PoseFitter {
       depthHint = primaryZ;
     }
 
-    // ── Lock-to-body position (dead-zone + adaptive EMA, no spring overshoot)
-    const rawPos = { x: primary.x + ox, y: primary.y + oy };
+    // ── Lock-to-body position (dead-zone + adaptive EMA ~0.4, no spring overshoot)
+    // Per-side independent positions with sliders working as offsets
+    let rawPos: { x: number; y: number; z?: number };
+    let rawSec: { x: number; y: number; z?: number } | undefined = undefined;
+
+    if (isEarring) {
+      const roll = Number.isFinite(headRoll) ? (headRoll as number) : 0;
+      const u_down_x = -Math.sin(roll);
+      const u_down_y = Math.cos(roll);
+      const u_left_x = Math.cos(roll);
+      const u_left_y = Math.sin(roll);
+
+      // Vertical position slider offsets along the face's local Y axis
+      const vertSliderX = this.fineTuneOffsetY * u_down_x;
+      const vertSliderY = this.fineTuneOffsetY * u_down_y;
+
+      const isLeft = primaryKey === 'LEFT_EAR_LOBE';
+      const sideSign = isLeft ? 1 : -1;
+
+      rawPos = {
+        x: primary.x + (ox * sideSign * u_left_x) + vertSliderX,
+        y: primary.y + (ox * sideSign * u_left_y) + vertSliderY,
+        z: primary.z,
+      };
+
+      if (secondary) {
+        const secSideSign = -sideSign;
+        rawSec = {
+          x: secondary.x + (ox * secSideSign * u_left_x) + vertSliderX,
+          y: secondary.y + (ox * secSideSign * u_left_y) + vertSliderY,
+          z: secondary.z,
+        };
+      }
+    } else {
+      oy += this.fineTuneOffsetY;
+      rawPos = { x: primary.x + ox, y: primary.y + oy, z: primary.z };
+      if (secondary) {
+        rawSec = { x: secondary.x - ox, y: secondary.y + oy, z: secondary.z };
+      }
+    }
+
     const targetRotX = Number.isFinite(headPitch) ? headPitch * 0.55 : 0;
     const targetRotY = Number.isFinite(headYaw) ? (headYaw as number) * 0.7 : 0;
 
     if (!this.smoothPos) {
-      this.smoothPos   = { x: rawPos.x, y: rawPos.y, vx: 0, vy: 0 };
+      this.smoothPos   = { x: rawPos.x, y: rawPos.y, z: rawPos.z, vx: 0, vy: 0, vz: 0 };
       this.smoothRot   = targetRotation;
       this.smoothRotX  = targetRotX;
       this.smoothRotY  = targetRotY;
@@ -259,11 +310,9 @@ export class PoseFitter {
       this.smoothScale += (targetScale - this.smoothScale) * this.scaleAlpha;
     }
 
-    if (secondary) {
-      const secOx = this.isEarringFit(primaryKey) ? ox : -ox;
-      const rawSec = { x: secondary.x + secOx, y: secondary.y + oy };
+    if (rawSec) {
       if (!this.smoothSecPos) {
-        this.smoothSecPos = { x: rawSec.x, y: rawSec.y, vx: 0, vy: 0 };
+        this.smoothSecPos = { x: rawSec.x, y: rawSec.y, z: rawSec.z, vx: 0, vy: 0, vz: 0 };
       } else {
         this._lockPoint(this.smoothSecPos, rawSec);
       }
@@ -350,9 +399,17 @@ export class PoseFitter {
     }
 
     return {
-      position:          { x: this.smoothPos!.x, y: this.smoothPos!.y },
+      position: {
+        x: this.smoothPos!.x,
+        y: this.smoothPos!.y,
+        z: this.smoothPos!.z,
+      },
       secondaryPosition: this.smoothSecPos
-        ? { x: this.smoothSecPos.x, y: this.smoothSecPos.y }
+        ? {
+            x: this.smoothSecPos.x,
+            y: this.smoothSecPos.y,
+            z: this.smoothSecPos.z,
+          }
         : undefined,
       scale:             this.smoothScale,
       rotationZ:         this.smoothRot,
@@ -378,16 +435,28 @@ export class PoseFitter {
     this.visibilityAlpha = 0;
   }
 
-  private _lockPoint(state: SpringState, target: Vec2): void {
+  private _lockPoint(state: SpringState, target: { x: number; y: number; z?: number }): void {
     const dx = target.x - state.x;
     const dy = target.y - state.y;
     const dist = Math.hypot(dx, dy);
-    if (dist < this.positionDeadzone) return;
-    const alpha = Math.min(0.92, this.positionAlpha + dist * 0.003);
-    state.x += dx * alpha;
-    state.y += dy * alpha;
-    state.vx = dx * alpha;
-    state.vy = dy * alpha;
+    if (dist >= this.positionDeadzone) {
+      const alpha = Math.min(0.92, this.positionAlpha + dist * 0.003);
+      state.x += dx * alpha;
+      state.y += dy * alpha;
+      state.vx = dx * alpha;
+      state.vy = dy * alpha;
+    }
+    if (target.z !== undefined) {
+      if (state.z === undefined) {
+        state.z = target.z;
+        state.vz = 0;
+      } else {
+        const dz = target.z - state.z;
+        const alphaZ = this.positionAlpha;
+        state.z += dz * alphaZ;
+        state.vz = dz * alphaZ;
+      }
+    }
   }
 
   private resolveLiveScale(landmarks: LandmarkResult): number {

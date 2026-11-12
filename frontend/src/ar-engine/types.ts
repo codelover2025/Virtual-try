@@ -25,8 +25,8 @@ export type AnchorProfile = {
 };
 
 export type PoseFit = {
-  position:          Vec2;
-  secondaryPosition?: Vec2;
+  position:          Vec2 & { z?: number };
+  secondaryPosition?: Vec2 & { z?: number };
   scale:             number;
   rotationZ:         number;
   /** Screen-space X tilt (pitch) applied to 3D jewellery. */
