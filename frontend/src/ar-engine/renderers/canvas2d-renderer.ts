@@ -127,12 +127,12 @@ export class Canvas2dRenderer {
       kindKey.includes('BANGLE') || kindKey.includes('BRACELET') || kindKey.includes('WATCH');
 
     if (isNecklace) {
-      // Golden calibration from app.py: necklace_w = int(face_w * 1.50)
-      const faceW = pose.scale * 100;
-      w = Math.max(160, Math.min(560, faceW * 1.50));
+      // 2. Necklace width = ~0.55 x shoulder width, scaled with depth
+      const shoulderRef = pose.scale * 100;
+      w = Math.max(120, Math.min(800, shoulderRef * 0.55));
       h = w * aspect;
       originX = -w / 2;
-      originY = -h * 0.48; // Centered at neck base / suprasternal notch
+      originY = -h * 0.42; // Centered at neck base to drape naturally over collarbone
     } else if (isEarring) {
       // Golden calibration from app.py: earring_w = max(14, int(face_width * 0.12))
       const faceW = pose.scale * 100;
@@ -207,11 +207,53 @@ export class Canvas2dRenderer {
     if (secondary && this.mirrorSecondary) {
       this.ctx.scale(-1, 1);
     }
-    this.ctx.shadowColor   = 'rgba(0,0,0,0.16)';
-    this.ctx.shadowBlur    = 3;
-    this.ctx.shadowOffsetY = 1;
-    this.ctx.shadowOffsetX = 0;
-    this.ctx.drawImage(img, originX, originY, w, h);
+
+    if (isNecklace) {
+      // 4. Curve the chain as a catenary draping on collarbone, and fade back portion near neck sides
+      const numSlices = 36;
+      const sliceW = w / numSlices;
+      const srcSliceW = img.naturalWidth / numSlices;
+      const sag = Math.max(6, Math.min(36, h * 0.16));
+      const k = 1.25;
+      const coshK = Math.cosh(k);
+
+      for (let i = 0; i < numSlices; i++) {
+        const u = (i + 0.5) / numSlices;
+        const t = (u - 0.5) * 2; // -1 to +1
+        const absT = Math.abs(t);
+
+        // Catenary curve: lowest at center (t = 0), curving upward at sides (-Y)
+        const catRatio = (Math.cosh(k * t) - 1) / (coshK - 1);
+        const yOffset = -sag * catRatio;
+
+        // Fade the back portion near the neck sides
+        let edgeFade = 1.0;
+        if (absT > 0.60) {
+          const f = Math.max(0, Math.min(1, (0.98 - absT) / 0.38));
+          edgeFade = f * f * (3 - 2 * f);
+        }
+
+        const sliceAlpha = alpha * edgeFade;
+        if (sliceAlpha < 0.01) continue;
+
+        const sx = i * srcSliceW;
+        const dx = originX + i * sliceW;
+        const dw = sliceW + 0.5;
+
+        this.ctx.globalAlpha = sliceAlpha;
+        this.ctx.drawImage(
+          img,
+          sx, 0, srcSliceW, img.naturalHeight,
+          dx, originY + yOffset, dw, h,
+        );
+      }
+    } else {
+      this.ctx.shadowColor   = 'rgba(0,0,0,0.16)';
+      this.ctx.shadowBlur    = 3;
+      this.ctx.shadowOffsetY = 1;
+      this.ctx.shadowOffsetX = 0;
+      this.ctx.drawImage(img, originX, originY, w, h);
+    }
     this.ctx.restore();
     this.ctx.globalAlpha = 1;
   }

@@ -426,17 +426,19 @@ export class FaceDetector implements ModelAdapter {
       points.push(named['LEFT_EAR_LOBE']);
     }
 
-    // Necklace & Neck base anchors from chin (Landmark 152 + 0.08 * faceWidth, matching app.py)
+    // Necklace & Neck base anchors: chin (152) + 0.35 * (shoulder_midpoint - chin)
     if (chin) {
+      const estMidY = chin.y + (faceWidth * 0.95);
+      const neckY = chin.y + 0.35 * (estMidY - chin.y);
       named['NECK_BASE'] = {
         x: chin.x,
-        y: chin.y + (faceWidth * 0.08),
+        y: neckY,
         z: chin.z,
         name: 'NECK_BASE',
       };
       named['COLLARBONE'] = {
         x: chin.x,
-        y: chin.y + (faceWidth * 0.16),
+        y: chin.y + 0.55 * (estMidY - chin.y),
         z: chin.z,
         name: 'COLLARBONE',
       };
@@ -578,14 +580,16 @@ export class FaceDetector implements ModelAdapter {
         y: chinY,
         name: 'CHIN',
       };
+      const estMidY = chinY + faceWidth * 0.95;
+      const neckY = chinY + 0.35 * (estMidY - chinY);
       named['NECK_BASE'] = {
         x: named['MOUTH'].x,
-        y: chinY + faceWidth * 0.08,
+        y: neckY,
         name: 'NECK_BASE',
       };
       named['COLLARBONE'] = {
         x: named['MOUTH'].x,
-        y: chinY + faceWidth * 0.16,
+        y: chinY + 0.55 * (estMidY - chinY),
         name: 'COLLARBONE',
       };
       named['NECKLACE_ANCHOR'] = named['NECK_BASE'];

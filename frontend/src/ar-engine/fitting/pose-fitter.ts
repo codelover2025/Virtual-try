@@ -62,10 +62,15 @@ export class PoseFitter {
     private readonly profile: AnchorProfile,
     private readonly defaults: PoseFitterOptions,
   ) {
-    this.positionAlpha = defaults.positionAlpha ?? 0.62;
-    this.rotationAlpha = defaults.rotationAlpha ?? 0.38;
-    this.scaleAlpha    = defaults.scaleAlpha    ?? 0.28;
-    this.jewelleryKind = (defaults.jewelleryKind ?? '').toUpperCase();
+    const kindStr = (defaults.jewelleryKind ?? '').toUpperCase();
+    const isNeck =
+      kindStr.includes('NECK') ||
+      kindStr.includes('PENDANT') ||
+      kindStr.includes('MANGALSUTRA');
+    this.positionAlpha = defaults.positionAlpha ?? (isNeck ? 0.45 : 0.62);
+    this.rotationAlpha = defaults.rotationAlpha ?? (isNeck ? 0.35 : 0.38);
+    this.scaleAlpha    = defaults.scaleAlpha    ?? (isNeck ? 0.28 : 0.28);
+    this.jewelleryKind = kindStr;
   }
 
   setFineTune(scaleMultiplier = 1.0, offsetY = 0): void {
@@ -160,16 +165,21 @@ export class PoseFitter {
     // Depth-aware scale: if z-coordinates are available, adjust by relative depth.
     const primaryZ = (primary as { z?: number }).z;
     if (primaryZ != null && Number.isFinite(primaryZ)) {
-      const refKey =
-        landmarks.kind === 'face'
-          ? 'NOSE_TIP'
-          : landmarks.kind === 'pose'
-            ? 'NECK_BASE'
-            : 'WRIST';
-      const refZ = (landmarks.named[refKey] as { z?: number } | undefined)?.z;
-      if (refZ != null && Number.isFinite(refZ)) {
-        const depthFactor = Math.max(0.6, Math.min(1.4, 1 + (refZ - primaryZ) * 0.008));
+      if (landmarks.kind === 'pose') {
+        // MediaPipe Pose z-coordinate scaling with depth (closer = larger, farther = smaller)
+        const refSpan = landmarks.scaleRef || 240;
+        const depthFactor = Math.max(0.65, Math.min(1.45, 1.0 - (primaryZ / refSpan) * 0.75));
         targetScale *= depthFactor;
+      } else {
+        const refKey =
+          landmarks.kind === 'face'
+            ? 'NOSE_TIP'
+            : 'WRIST';
+        const refZ = (landmarks.named[refKey] as { z?: number } | undefined)?.z;
+        if (refZ != null && Number.isFinite(refZ)) {
+          const depthFactor = Math.max(0.6, Math.min(1.4, 1 + (refZ - primaryZ) * 0.008));
+          targetScale *= depthFactor;
+        }
       }
     }
 
@@ -197,8 +207,14 @@ export class PoseFitter {
       const isStud = (this.profile as any).earringType === 'STUD';
       targetRotation = isStud ? roll : roll * 0.20;
     } else if (this.isNecklaceFit(primaryKey)) {
-      const roll = Number.isFinite(headRoll) ? (headRoll as number) : 0;
-      targetRotation = roll * 0.40; // matching app.py angle = rot * 0.4
+      // 3. Rotate the necklace to follow the shoulder line (angle of 11->12)
+      const shoulderRot = landmarks.named['SHOULDER_ROT']?.x;
+      if (shoulderRot != null && Number.isFinite(shoulderRot)) {
+        targetRotation = shoulderRot;
+      } else {
+        const roll = Number.isFinite(headRoll) ? (headRoll as number) : 0;
+        targetRotation = roll * 0.35;
+      }
     } else if (this.isNoseFit(primaryKey)) {
       const roll = Number.isFinite(headRoll) ? (headRoll as number) : 0;
       targetRotation = roll;

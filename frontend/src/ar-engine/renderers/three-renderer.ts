@@ -1308,32 +1308,43 @@ function createChokerNecklace(): THREE.Group {
   const gold = createGoldMaterial();
   const gem = createGemMaterial();
 
-  // Visible chain symmetrically positioned around the neck
-  const chainArc = Math.PI * 1.45;
-  const chain = new THREE.Mesh(
-    new THREE.TorusGeometry(1.65, 0.08, 16, 72, chainArc),
-    gold,
+  // 4. Curve the chain as a catenary draping on collarbone, fading at the back sides
+  const curvePoints: THREE.Vector3[] = [];
+  const numPts = 32;
+  const k = 1.25;
+  const coshK = Math.cosh(k);
+  const sag = 0.45;
+
+  for (let i = 0; i <= numPts; i++) {
+    const t = (i / numPts - 0.5) * 2; // -1 to +1
+    const x = t * 1.62;
+    // Catenary drape: hangs lowest at center (+Y in screen orthographic)
+    const catRatio = (Math.cosh(k * t) - 1) / (coshK - 1);
+    const y = sag * (1 - catRatio) + 0.1;
+    // Wrap around neck depth
+    const z = -Math.cos(t * Math.PI * 0.45) * 0.55 + 0.55;
+    curvePoints.push(new THREE.Vector3(x, y, z));
+  }
+
+  const catenaryCurve = new THREE.CatmullRomCurve3(curvePoints);
+  const chainGeo = new THREE.TubeGeometry(catenaryCurve, 64, 0.055, 12, false);
+  const chain = new THREE.Mesh(chainGeo, gold);
+
+  // Inner layered chain slightly smaller
+  const innerPoints: THREE.Vector3[] = curvePoints.map((p) =>
+    new THREE.Vector3(p.x * 0.90, p.y - 0.15, p.z * 0.90),
   );
-  chain.rotation.x = Math.PI * 0.58;
-  chain.rotation.z = -0.225 * Math.PI;
-  chain.position.set(0, 0, 0.15);
+  const innerCurve = new THREE.CatmullRomCurve3(innerPoints);
+  const innerChainGeo = new THREE.TubeGeometry(innerCurve, 56, 0.038, 12, false);
+  const innerChain = new THREE.Mesh(innerChainGeo, gold);
 
-  const innerArc = Math.PI * 1.35;
-  const innerChain = new THREE.Mesh(
-    new THREE.TorusGeometry(1.5, 0.045, 12, 64, innerArc),
-    gold,
-  );
-  innerChain.rotation.x = Math.PI * 0.58;
-  innerChain.rotation.z = -0.175 * Math.PI;
-  innerChain.position.set(0, 0.12, 0.12);
+  // Pendant bail and drop hang down (+Y in screen orthographic) from collarbone center
+  const bail = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.028, 12, 24), gold);
+  bail.position.set(0, sag + 0.12, 0.1);
 
-  // Pendant bail and drop hang down (+Y in screen orthographic)
-  const bail = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.03, 12, 24), gold);
-  bail.position.set(0, 1.65, 0.2);
-
-  const pendant = new THREE.Mesh(new THREE.OctahedronGeometry(0.34, 0), gem);
+  const pendant = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), gem);
   pendant.scale.set(0.85, 1.35, 0.85);
-  pendant.position.set(0, 2.05, 0.22);
+  pendant.position.set(0, sag + 0.45, 0.12);
 
   group.add(chain, innerChain, bail, pendant);
   return group;
