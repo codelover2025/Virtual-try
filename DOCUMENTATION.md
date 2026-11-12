@@ -1,10 +1,10 @@
 # Lumière — AI Virtual Jewellery Try-On Documentation
 
-**Lumière** is a dual-platform augmented reality atelier designed for real-time virtual jewellery try-on. It combines high-accuracy computer vision with real-time biometric landmark tracking to simulate photorealistic placement of fine jewellery—including earrings, necklaces, rings, and bangles—directly onto the user's live camera feed.
+**Lumière** is an augmented reality atelier designed for real-time virtual jewellery try-on. It combines high-accuracy computer vision with real-time biometric landmark tracking to simulate photorealistic placement of fine jewellery—including earrings, necklaces, rings, and bangles—directly onto the user's live camera feed.
 
 The repository includes:
-1. **Desktop Atelier (`app.py`)**: A native Python application built with OpenCV, MediaPipe, Pillow, and Tkinter.
-2. **Web Atelier (`frontend/`)**: A modern, standalone Next.js 15 + React 19 web application running on-device MediaPipe Vision Tasks (WebGL/WASM), Three.js PBR shaders, and high-performance 2D canvas overlays with zero server or backend dependencies.
+1. **Web Atelier (`frontend/`)**: A modern, standalone Next.js 15 + React 19 web application running on-device MediaPipe Vision Tasks (WebGL/WASM), Three.js PBR shaders, and high-performance 2D canvas overlays with zero server or backend dependencies.
+2. **Backend API (`server.py`)**: An optional Python API service on port 4000 for catalogue management and session storage.
 
 ---
 
@@ -62,18 +62,9 @@ Both platforms execute **100% on the client device**. Video frames never leave t
 
 ---
 
-## 2. Platform Implementations
+## 2. Platform Architecture
 
-### 2.1 Python Desktop Application (`app.py`)
-- **Technology Stack**: Python 3.10+, OpenCV (`cv2`), MediaPipe (`mediapipe`), Pillow (`PIL`), Tkinter.
-- **Entry Point**: [`app.py`](file:///c:/Users/ankus/Downloads/VIRTUAL-TRY-ON-main/app.py)
-- **Features**:
-  - Live webcam preview mirrored horizontally for natural reflection.
-  - Multi-category sidebar selector (Earrings, Necklaces, Rings, Bangles).
-  - High-precision affine transforms with boundary clamping (prevents crashes when hands or face leave the frame).
-  - One-click snapshot capture saved directly to disk.
-
-### 2.2 Next.js Web Application (`frontend/`)
+### 2.1 Next.js Web Application (`frontend/`)
 - **Technology Stack**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, `@mediapipe/tasks-vision`, `@tensorflow/tfjs`, Three.js.
 - **Entry Point**: [`frontend/src/app/page.tsx`](file:///c:/Users/ankus/Downloads/VIRTUAL-TRY-ON-main/frontend/src/app/page.tsx) and [`frontend/src/app/try-on/page.tsx`](file:///c:/Users/ankus/Downloads/VIRTUAL-TRY-ON-main/frontend/src/app/try-on/page.tsx)
 - **Features**:
@@ -83,6 +74,12 @@ Both platforms execute **100% on the client device**. Video frames never leave t
   - Fine-tune controls (Size Ratio slider: 80%–120%, Vertical Position offset: ±25px).
   - Studio camera controls (Mirror Flip, Alignment Guide, Studio Lighting Boost, Front/Rear camera switch).
   - Studio snapshot export with automatic compositing and downloads.
+
+### 2.2 Python Backend Server (`server.py`)
+- **Technology Stack**: Python 3.10+, FastAPI / Flask.
+- **Entry Point**: [`server.py`](file:///c:/Users/ankus/Downloads/VIRTUAL-TRY-ON-main/server.py)
+- **Features**:
+  - RESTful API endpoints for product catalogue, try-on session persistence, and asset preloading.
 
 ---
 
@@ -145,22 +142,19 @@ The web AR engine implements multiple performance optimizations ensuring sustain
 
 ## 5. Installation & Running
 
-### 5.1 Desktop App
+### 5.1 Backend API (Optional Python Server)
 
 #### Requirements:
-- Python 3.10, 3.11, or 3.12
-- Working webcam
+- Python 3.10+
+- `pip install -r requirements.txt`
 
 #### Steps:
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-
-# 2. Run the application
-python app.py
+# Launch backend API on port 4000
+python server.py
 ```
 
-### 5.2 Web App
+### 5.2 Web App (Standalone Atelier)
 
 #### Requirements:
 - Node.js 18+ (Node.js 20+ recommended)
@@ -196,12 +190,11 @@ pnpm start
 
 ```text
 VIRTUAL-TRY-ON-main/
-├── app.py                      # Desktop AR application (OpenCV + MediaPipe + Tkinter)
+├── server.py                   # Backend API server (Port 4000)
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # Repository overview
 ├── DOCUMENTATION.md            # Comprehensive system documentation
 ├── run_web.bat                 # One-click Windows launch script for Web Atelier
-├── server.py                   # Optional local catalog API server
 ├── static/                     # Shared jewellery assets & desktop UI resources
 │   ├── Image/
 │   │   ├── Earring/            # Earring transparent PNG overlays
@@ -273,7 +266,7 @@ VIRTUAL-TRY-ON-main/
 
 #### Q1: "Camera access is blocked or black screen appears in the browser"
 - Check browser permissions by clicking the padlock or camera icon in the URL bar.
-- Ensure no other application (e.g. Zoom, Teams, or the desktop `python app.py`) is holding an exclusive hardware lock on the webcam.
+- Ensure no other application (e.g. Zoom, Teams, or another browser tab) is holding an exclusive hardware lock on the webcam.
 
 #### Q2: "The jewellery overlay appears mirrored or reversed"
 - Lumière features unified mirror compensation: the camera viewfinder DOM container applies `-scale-x-100` so looking into the screen feels like a natural mirror. The AR engine draws in standard unmirrored coordinate space to avoid double-mirroring. You can toggle manual mirror view using the mirror button at the top of the camera viewfinder.
