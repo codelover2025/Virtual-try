@@ -132,7 +132,7 @@ export class Canvas2dRenderer {
       w = Math.max(120, Math.min(800, shoulderRef * 0.55));
       h = w * aspect;
       originX = -w / 2;
-      originY = -h * 0.42; // Centered at neck base to drape naturally over collarbone
+      originY = -h * 0.40; // Centered at neck base to drape naturally over collarbone
     } else if (isEarring) {
       // Golden calibration from app.py: earring_w = max(14, int(face_width * 0.12))
       const faceW = pose.scale * 100;
@@ -213,7 +213,7 @@ export class Canvas2dRenderer {
       const numSlices = 36;
       const sliceW = w / numSlices;
       const srcSliceW = img.naturalWidth / numSlices;
-      const sag = Math.max(6, Math.min(36, h * 0.16));
+      const sag = Math.max(4, Math.min(22, h * 0.10));
       const k = 1.25;
       const coshK = Math.cosh(k);
 

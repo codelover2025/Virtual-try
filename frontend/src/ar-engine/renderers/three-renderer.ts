@@ -662,8 +662,11 @@ export class ThreeRenderer {
       this.root.visible = false;
     }
 
-    // Apply secondary.
-    if (pose.secondaryPosition && secOpacity > 0.01) {
+    // Apply secondary (only for dual items such as earrings).
+    const isDualEarring =
+      (kind?.toUpperCase().includes('EARRING') ?? false) ||
+      (this.currentAssetUrl?.includes('earring') ?? false);
+    if (isDualEarring && pose.secondaryPosition && secOpacity > 0.01) {
       this.secondary.visible = true;
       this.secondary.position.set(
         pose.secondaryPosition.x,

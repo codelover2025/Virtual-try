@@ -516,7 +516,10 @@ export class ArEngine {
             this.threeRenderer.render(renderPose, kind);
           } else if (!is3d && this.canvasRenderer) {
             // Sort by depth (z) so far earring renders first and near earring renders in front
-            if (renderPose.secondaryPosition) {
+            const isDualEarring =
+              (kind?.toUpperCase().includes('EARRING') ?? false) ||
+              (this.config?.assetUrl?.includes('earring') ?? false);
+            if (isDualEarring && renderPose.secondaryPosition) {
               const rz = renderPose.position.z;
               const sz = renderPose.secondaryPosition.z;
               let primaryIsFar = false;

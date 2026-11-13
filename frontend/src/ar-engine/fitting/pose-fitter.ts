@@ -298,9 +298,6 @@ export class PoseFitter {
     } else {
       oy += this.fineTuneOffsetY;
       rawPos = { x: primary.x + ox, y: primary.y + oy, z: primary.z };
-      if (secondary) {
-        rawSec = { x: secondary.x - ox, y: secondary.y + oy, z: secondary.z };
-      }
     }
 
     const targetRotX = Number.isFinite(headPitch) ? headPitch * 0.55 : 0;
