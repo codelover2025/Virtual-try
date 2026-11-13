@@ -6,7 +6,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { PoseFit, RingConfig, BangleConfig } from '../types.js';
 
 type LoadedAsset = {
-  primary: THREE.Group;
+  primary:   THREE.Group;
   secondary: THREE.Group | null;
 };
 
@@ -30,16 +30,16 @@ type LoadedAsset = {
 const MAX_CACHED_ASSETS = 8;
 
 export class ThreeRenderer {
-  private renderer: THREE.WebGLRenderer;
-  private scene = new THREE.Scene();
-  private camera: THREE.OrthographicCamera;
-  private root = new THREE.Group();
+  private renderer:  THREE.WebGLRenderer;
+  private scene    = new THREE.Scene();
+  private camera:    THREE.OrthographicCamera;
+  private root     = new THREE.Group();
   private secondary = new THREE.Group();
-  private occluder: THREE.Mesh;
+  private occluder:  THREE.Mesh;
   private fingerOccluder: THREE.Mesh;
   private axesHelper: THREE.AxesHelper;
   private showDebugAxes = false;
-  private ready = false;
+  private ready    = false;
 
   // Ring mesh reference for tracking loop (prevents stale mesh reads)
   public readonly ringRef: { current: THREE.Group | null } = { current: null };
@@ -95,7 +95,7 @@ export class ThreeRenderer {
   private mirrorSecondary = false;
 
   // Fade state
-  private targetOpacity = 1;
+  private targetOpacity  = 1;
   private currentOpacity = 1;
 
   // Animation — kept for disposal only. Try-on never plays baked GLTF clips.
@@ -119,10 +119,10 @@ export class ThreeRenderer {
     // ── WebGL renderer ────────────────────────────────────────────────────
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      alpha: true,
-      antialias: true,
+      alpha:                true,
+      antialias:            true,
       preserveDrawingBuffer: true,
-      powerPreference: 'high-performance',
+      powerPreference:      'high-performance',
     });
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -221,9 +221,9 @@ export class ThreeRenderer {
     if (this.pixelRatioOverride != null) {
       this.renderer.setPixelRatio(this.pixelRatioOverride);
     }
-    this.camera.left = 0;
-    this.camera.right = width;
-    this.camera.top = 0;
+    this.camera.left   = 0;
+    this.camera.right  = width;
+    this.camera.top    = 0;
     this.camera.bottom = height;
     this.camera.updateProjectionMatrix();
   }
@@ -524,7 +524,7 @@ export class ThreeRenderer {
       this.secondary.add(sec);
     }
     this.mirrorSecondary = mirrorSec;
-    this.currentAssetUrl = url;
+    this.currentAssetUrl  = url;
     this.ready = true;
     this.targetOpacity = 0;   // fade in
     this.currentOpacity = 0;
@@ -578,7 +578,7 @@ export class ThreeRenderer {
     }
 
     if (!pose.visible || this.currentOpacity < 0.01) {
-      this.root.visible = false;
+      this.root.visible      = false;
       this.secondary.visible = false;
       this.renderer.render(this.scene, this.camera);
       return;
@@ -621,7 +621,7 @@ export class ThreeRenderer {
     // 20-45 deg: fade the far-side earring toward 0 opacity.
     // > 45 deg: hide the far earring completely, keep the near one attached.
     let rootOpacity = this.currentOpacity;
-    let secOpacity = this.currentOpacity;
+    let secOpacity  = this.currentOpacity;
     if (pose.secondaryPosition && pose.yaw !== undefined) {
       const YAW_20_DEG = (20 * Math.PI) / 180; // ~0.349 rad
       const YAW_45_DEG = (45 * Math.PI) / 180; // ~0.785 rad
@@ -1160,9 +1160,6 @@ export class ThreeRenderer {
 
   private _disposeGroup(group: THREE.Group, disposeGeometry: boolean): void {
     group.traverse((node) => {
-      if ((node as any).isLight) {
-        (node as any).dispose?.();
-      }
       if ((node as THREE.Mesh).isMesh) {
         const mesh = node as THREE.Mesh;
         if (disposeGeometry) mesh.geometry?.dispose();
@@ -1203,7 +1200,7 @@ export class ThreeRenderer {
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
         mats.forEach((m: THREE.Material) => {
           m.transparent = opacity < 1;
-          m.opacity = opacity;
+          m.opacity     = opacity;
           m.needsUpdate = true;
         });
       }
@@ -1245,8 +1242,8 @@ export class ThreeRenderer {
 
 function createGoldDropEarring(): THREE.Group {
   const group = new THREE.Group();
-  const gold = new THREE.MeshStandardMaterial({
-    color: 0xd4af37,
+  const gold  = new THREE.MeshStandardMaterial({
+    color:     0xd4af37,
     metalness: 0.97,
     roughness: 0.14,
     envMapIntensity: 1.2,
@@ -1451,47 +1448,19 @@ export const RING_CONFIGS: Record<string, RingConfig> = {
 export const RING_ALIAS_MAP: Record<string, string> = {
   'brilliant-solitaire-diamond-ring': 'prod-ring-001',
   'solitaire': 'prod-ring-001',
-  'ring_1': 'prod-ring-001',
-  'ring-1': 'prod-ring-001',
-  'prod-ring-001': 'prod-ring-001',
   'royal-ruby-pave-crown-ring': 'prod-ring-002',
   'ruby': 'prod-ring-002',
-  'ring_2': 'prod-ring-002',
-  'ring-2': 'prod-ring-002',
-  'prod-ring-002': 'prod-ring-002',
   'sapphire-halo-luxury-ring': 'prod-ring-003',
-  'sapphire-halo-luxe-ring': 'prod-ring-003',
   'sapphire': 'prod-ring-003',
-  'ring_3': 'prod-ring-003',
-  'ring-3': 'prod-ring-003',
-  'prod-ring-003': 'prod-ring-003',
   'imperial-emerald-cut-gold-ring': 'prod-ring-004',
   'emerald': 'prod-ring-004',
-  'ring_4': 'prod-ring-004',
-  'ring-4': 'prod-ring-004',
-  'prod-ring-004': 'prod-ring-004',
   'amethyst-sovereign-gold-ring': 'prod-ring-005',
   'amethyst': 'prod-ring-005',
-  'ring_5': 'prod-ring-005',
-  'ring-5': 'prod-ring-005',
-  'prod-ring-005': 'prod-ring-005',
 };
 
-export function resolveRingConfig(
-  configOrId?: RingConfig | { id?: string; productId?: string; metadata?: { ringConfig?: RingConfig } } | string | null,
-): RingConfig {
-  if (configOrId && typeof configOrId === 'object') {
-    if ('gemColor' in configOrId && typeof (configOrId as RingConfig).gemColor === 'string') {
-      return configOrId as RingConfig;
-    }
-    const nested = (configOrId as any).metadata?.ringConfig || (configOrId as any).ringConfig;
-    if (nested && typeof nested === 'object' && 'gemColor' in nested) {
-      return nested as RingConfig;
-    }
-    const objId = (configOrId as any).id || (configOrId as any).productId;
-    if (typeof objId === 'string') {
-      return resolveRingConfig(objId);
-    }
+export function resolveRingConfig(configOrId?: RingConfig | string | null): RingConfig {
+  if (configOrId && typeof configOrId === 'object' && 'gemColor' in configOrId) {
+    return configOrId;
   }
   const str = typeof configOrId === 'string' ? configOrId.toLowerCase().trim() : '';
   if (str) {
@@ -1520,25 +1489,7 @@ export function buildRing(
   group.name = 'solitaire_ring';
   group.renderOrder = 1;
 
-  // 1. Resolve gemColor with validation and debug support
-  let gemColor = config?.gemColor;
-  if (!gemColor) {
-    console.warn('[ThreeRenderer] gemColor is missing from ring config:', config);
-    gemColor = '#FFFFFF';
-  }
-
-  // Behind ?debug=1 only: temporarily set gem color to pure red
-  const isDebugMode =
-    typeof window !== 'undefined' &&
-    (new URLSearchParams(window.location.search).get('debug') === '1' ||
-      new URLSearchParams(window.location.search).get('debug') === 'true');
-  if (isDebugMode) {
-    gemColor = '#FF0000';
-  }
-
-  console.log(`[ThreeRenderer] Resolved gemColor for ring ${config?.id || 'unknown'}: ${gemColor}`);
-
-  // 2. Metal Material (yellow #D4AF37, white #E5E4E2, rose #B76E79, metalness 1, roughness 0.25)
+  // 1. Metal Material (yellow #D4AF37, white #E5E4E2, rose #B76E79, metalness 1, roughness 0.25)
   const metalHex =
     config.bandMetal === 'white'
       ? 0xe5e4e2
@@ -1554,7 +1505,7 @@ export function buildRing(
     envMapIntensity: 1.35,
   });
 
-  // 3. Band: TorusGeometry native hole axis is local +Z (no rotation around X)
+  // 2. Band: TorusGeometry native hole axis is local +Z (no rotation around X)
   // Normalized so outer radius = ringRadius + tubeRadius = 1.0
   const thickness = Math.max(0.06, Math.min(0.20, config.bandThickness || 0.107));
   const ringRadius = 1.0 - thickness;
@@ -1564,7 +1515,7 @@ export function buildRing(
   band.name = 'ring_band';
   group.add(band);
 
-  // 4. Contact Shadow: Soft blob shadow plane under the band on the finger surface
+  // 3. Contact Shadow: Soft blob shadow plane under the band on the finger surface
   if (shadowTexture) {
     const shadowGeo = new THREE.PlaneGeometry(1.4, 0.9);
     const shadowMat = new THREE.MeshBasicMaterial({
@@ -1581,47 +1532,20 @@ export function buildRing(
     group.add(shadow);
   }
 
-  const s = config.gemScale || 1.0;
-
-  // 5. Accent stones on band shank if accentStones === true
+  // 4. Accent stones on band shank if accentStones === true
   if (config.accentStones) {
-    const accentColor = (config as any).accentColor || config.haloColor || '#FFFFFF';
-    const isAccentDiamond = !isDebugMode && (accentColor.toUpperCase() === '#FFFFFF');
-    const accentMat = new THREE.MeshPhysicalMaterial(
-      isAccentDiamond
-        ? {
-            color: new THREE.Color(0xffffff),
-            emissive: new THREE.Color(0x222222),
-            emissiveIntensity: 0.1,
-            metalness: 0.0,
-            roughness: 0.05,
-            transmission: 0.8,
-            transparent: true,
-            opacity: 1.0,
-            ior: 2.4,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.05,
-            envMap: envTexture ?? null,
-            envMapIntensity: 0.8,
-            flatShading: true,
-          }
-        : {
-            color: new THREE.Color(accentColor),
-            emissive: new THREE.Color(accentColor),
-            emissiveIntensity: 0.35,
-            metalness: 0.0,
-            roughness: 0.05,
-            transmission: 0,
-            transparent: false,
-            opacity: 1.0,
-            ior: 2.2,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.05,
-            envMap: envTexture ?? null,
-            envMapIntensity: 0.6,
-            flatShading: true,
-          }
-    );
+    const accentMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff,
+      metalness: 0.0,
+      roughness: 0.04,
+      transmission: 0.7,
+      ior: 2.4,
+      clearcoat: 1.0,
+      transparent: true,
+      opacity: 1.0,
+      envMap: envTexture ?? null,
+      envMapIntensity: 1.6,
+    });
     const shankAngles = [0.22, 0.38, 0.54];
     for (const sign of [-1, 1]) {
       for (const a of shankAngles) {
@@ -1629,7 +1553,7 @@ export function buildRing(
         const ax = Math.cos(theta) * ringRadius;
         const ay = Math.sin(theta) * ringRadius;
         const stone = new THREE.Mesh(
-          new THREE.OctahedronGeometry(0.042 * s, 0),
+          new THREE.SphereGeometry(0.042 * (config.gemScale || 1.0), 8, 8),
           accentMat,
         );
         stone.position.set(ax, ay, tubeRadius * 0.6);
@@ -1638,9 +1562,11 @@ export function buildRing(
     }
   }
 
-  // 6. Gem Group: sits at local +Y (back of hand)
+  // 5. Gem Group: sits at local +Y (back of hand)
   const gemGroup = new THREE.Group();
   gemGroup.name = 'solitaire_gem';
+
+  const s = config.gemScale || 1.0;
 
   // Setting Collet in matching metal
   const collet = new THREE.Mesh(
@@ -1650,53 +1576,22 @@ export function buildRing(
   collet.position.set(0, 1.02, 0);
   gemGroup.add(collet);
 
-  // Gem Material per requirements:
-  // Only diamond (Solitaire / #FFFFFF) may use transmission > 0 and white color.
-  // All colored stones must have transmission = 0.
-  const isDiamond = !isDebugMode && (config.id === 'prod-ring-001' || gemColor.toUpperCase() === '#FFFFFF');
-  const gemMaterial = new THREE.MeshPhysicalMaterial(
-    isDiamond
-      ? {
-          color: new THREE.Color(0xffffff),
-          emissive: new THREE.Color(0x222222),
-          emissiveIntensity: 0.1,
-          metalness: 0.0,
-          roughness: 0.05,
-          transmission: 0.85,
-          transparent: true,
-          opacity: 1.0,
-          ior: 2.4,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.05,
-          envMap: envTexture ?? null,
-          envMapIntensity: 0.8,
-          flatShading: true,
-        }
-      : {
-          color: new THREE.Color(gemColor),
-          emissive: new THREE.Color(gemColor),
-          emissiveIntensity: 0.35,
-          metalness: 0.0,
-          roughness: 0.05,
-          transmission: 0,
-          transparent: false,
-          opacity: 1.0,
-          ior: 2.2,
-          clearcoat: 1.0,
-          clearcoatRoughness: 0.05,
-          envMap: envTexture ?? null,
-          envMapIntensity: 0.6,
-          flatShading: true,
-        }
-  );
+  // Gem Material: color = gemColor, transmission ~0.6, ior 2.4, clearcoat 1
+  const gemMaterial = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(config.gemColor),
+    metalness: 0.0,
+    roughness: 0.03,
+    transmission: 0.6,
+    ior: 2.4,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.04,
+    transparent: true,
+    opacity: 1.0,
+    envMap: envTexture ?? null,
+    envMapIntensity: 1.6,
+  });
 
-  // Small PointLight (same color as the gem, intensity ~0.4) near the gem to keep tint in dim light
-  const gemLight = new THREE.PointLight(new THREE.Color(gemColor), 0.4, 3.0);
-  gemLight.position.set(0, 1.25 * s, 0.15);
-  gemLight.name = 'gem_tint_light';
-  gemGroup.add(gemLight);
-
-  // Gem geometry chosen by gemShape with faceted geometry
+  // Gem geometry chosen by gemShape
   switch (config.gemShape) {
     case 'princess': {
       // Square pyramidal princess cut
@@ -1730,7 +1625,7 @@ export function buildRing(
     }
 
     case 'emerald': {
-      // Rectangular step cut with 8-facet stepped geometry
+      // Rectangular step cut
       const crown = new THREE.Mesh(
         new THREE.CylinderGeometry(0.26 * s, 0.34 * s, 0.14 * s, 8),
         gemMaterial,
@@ -1764,19 +1659,18 @@ export function buildRing(
     }
 
     case 'pear': {
-      // Teardrop faceted pear cut (8-facet crown + pavilion)
+      // Teardrop pear cut
       const crown = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.12 * s, 0.28 * s, 0.14 * s, 8),
+        new THREE.SphereGeometry(0.28 * s, 16, 16),
         gemMaterial,
       );
-      crown.scale.set(0.85, 1.2, 0.75);
+      crown.scale.set(0.85, 1.25, 0.75);
       crown.position.set(0, 1.18, 0);
 
       const pavilion = new THREE.Mesh(
-        new THREE.ConeGeometry(0.28 * s, 0.18 * s, 8),
+        new THREE.ConeGeometry(0.24 * s, 0.18 * s, 16),
         gemMaterial,
       );
-      pavilion.scale.set(0.85, 1.0, 0.75);
       pavilion.rotation.z = Math.PI;
       pavilion.position.set(0, 1.04, 0);
 
@@ -1796,15 +1690,15 @@ export function buildRing(
 
     case 'round':
     default: {
-      // Brilliant round faceted cut (8 radial segments)
+      // Brilliant round faceted cut
       const crown = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.18 * s, 0.30 * s, 0.12 * s, 8),
+        new THREE.CylinderGeometry(0.18 * s, 0.30 * s, 0.12 * s, 12),
         gemMaterial,
       );
       crown.position.set(0, 1.18, 0);
 
       const pavilion = new THREE.Mesh(
-        new THREE.ConeGeometry(0.30 * s, 0.16 * s, 8),
+        new THREE.ConeGeometry(0.30 * s, 0.16 * s, 12),
         gemMaterial,
       );
       pavilion.rotation.z = Math.PI;
@@ -1825,45 +1719,20 @@ export function buildRing(
     }
   }
 
-  // 7. Optional Halo ring of small stones if hasHalo === true
+  // 6. Optional Halo ring of small stones if hasHalo === true
   if (config.hasHalo) {
     const haloColor = config.haloColor || '#FFFFFF';
-    const isHaloDiamond = !isDebugMode && (haloColor.toUpperCase() === '#FFFFFF');
-    const haloMat = new THREE.MeshPhysicalMaterial(
-      isHaloDiamond
-        ? {
-            color: new THREE.Color(0xffffff),
-            emissive: new THREE.Color(0x222222),
-            emissiveIntensity: 0.1,
-            metalness: 0.0,
-            roughness: 0.05,
-            transmission: 0.8,
-            transparent: true,
-            opacity: 1.0,
-            ior: 2.4,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.05,
-            envMap: envTexture ?? null,
-            envMapIntensity: 0.8,
-            flatShading: true,
-          }
-        : {
-            color: new THREE.Color(haloColor),
-            emissive: new THREE.Color(haloColor),
-            emissiveIntensity: 0.35,
-            metalness: 0.0,
-            roughness: 0.05,
-            transmission: 0,
-            transparent: false,
-            opacity: 1.0,
-            ior: 2.2,
-            clearcoat: 1.0,
-            clearcoatRoughness: 0.05,
-            envMap: envTexture ?? null,
-            envMapIntensity: 0.6,
-            flatShading: true,
-          }
-    );
+    const haloMat = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(haloColor),
+      metalness: 0.0,
+      roughness: 0.03,
+      transmission: 0.6,
+      ior: 2.4,
+      clearcoat: 1.0,
+      transparent: true,
+      opacity: 1.0,
+      envMap: envTexture ?? null,
+    });
     const haloRadius = 0.38 * s;
     const stoneCount = 12;
     for (let i = 0; i < stoneCount; i++) {
@@ -1871,7 +1740,7 @@ export function buildRing(
       const hx = Math.cos(theta) * haloRadius;
       const hz = Math.sin(theta) * haloRadius;
       const stone = new THREE.Mesh(
-        new THREE.OctahedronGeometry(0.045 * s, 0),
+        new THREE.SphereGeometry(0.045 * s, 8, 8),
         haloMat,
       );
       stone.position.set(hx, 1.08, hz);

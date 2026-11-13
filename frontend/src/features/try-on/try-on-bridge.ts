@@ -1,4 +1,4 @@
-import { resolveRingConfig, type JewelleryConfig, type RingConfig, type BangleConfig } from '@vj/ar-engine';
+import type { JewelleryConfig, RingConfig, BangleConfig } from '@vj/ar-engine';
 import type { JewelleryKind } from '@vj/shared';
 import type { JewelleryAssetDto } from '@vj/types';
 import { api } from '@/lib/api';
@@ -64,7 +64,7 @@ export async function toJewelleryConfig(
     mirrorForOppositeEar: asset?.mirrorForOppositeEar ?? (jewelleryKind === 'EARRINGS'),
     fingerIndex: asset?.fingerIndex ?? (jewelleryKind === 'RINGS' ? 3 : null),
     productId,
-    ringConfig: ringConfig ?? (jewelleryKind === 'RINGS' ? resolveRingConfig(productId || source) : undefined),
+    ringConfig,
     bangleConfig,
   };
 }

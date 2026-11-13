@@ -278,20 +278,7 @@ PRODUCTS_MASTER = [
         "anchorProfile": {"anchorType": "FINGER_BASE", "fingerIndex": 3},
         "defaultScale": 1.0,
         "mirrorForOppositeEar": False,
-        "fingerIndex": 3,
-        "metadata": {
-            "ringConfig": {
-                "id": "prod-ring-001",
-                "gemColor": "#FFFFFF",
-                "gemShape": "round",
-                "gemScale": 1.0,
-                "bandMetal": "yellow",
-                "bandThickness": 0.107,
-                "hasHalo": False,
-                "haloColor": "#FFFFFF",
-                "accentStones": False,
-            }
-        }
+        "fingerIndex": 3
     },
     {
         "id": "prod-ring-002",
@@ -308,20 +295,7 @@ PRODUCTS_MASTER = [
         "anchorProfile": {"anchorType": "FINGER_BASE", "fingerIndex": 3},
         "defaultScale": 1.0,
         "mirrorForOppositeEar": False,
-        "fingerIndex": 3,
-        "metadata": {
-            "ringConfig": {
-                "id": "prod-ring-002",
-                "gemColor": "#E0115F",
-                "gemShape": "princess",
-                "gemScale": 1.08,
-                "bandMetal": "yellow",
-                "bandThickness": 0.11,
-                "hasHalo": False,
-                "haloColor": "#FFFFFF",
-                "accentStones": True,
-            }
-        }
+        "fingerIndex": 3
     },
     {
         "id": "prod-ring-003",
@@ -338,20 +312,7 @@ PRODUCTS_MASTER = [
         "anchorProfile": {"anchorType": "FINGER_BASE", "fingerIndex": 3},
         "defaultScale": 1.0,
         "mirrorForOppositeEar": False,
-        "fingerIndex": 3,
-        "metadata": {
-            "ringConfig": {
-                "id": "prod-ring-003",
-                "gemColor": "#1E6FD9",
-                "gemShape": "round",
-                "gemScale": 1.05,
-                "bandMetal": "white",
-                "bandThickness": 0.105,
-                "hasHalo": True,
-                "haloColor": "#FFFFFF",
-                "accentStones": True,
-            }
-        }
+        "fingerIndex": 3
     },
     {
         "id": "prod-ring-004",
@@ -368,20 +329,7 @@ PRODUCTS_MASTER = [
         "anchorProfile": {"anchorType": "FINGER_BASE", "fingerIndex": 3},
         "defaultScale": 1.0,
         "mirrorForOppositeEar": False,
-        "fingerIndex": 3,
-        "metadata": {
-            "ringConfig": {
-                "id": "prod-ring-004",
-                "gemColor": "#2ECC71",
-                "gemShape": "emerald",
-                "gemScale": 1.15,
-                "bandMetal": "yellow",
-                "bandThickness": 0.125,
-                "hasHalo": False,
-                "haloColor": "#FFFFFF",
-                "accentStones": False,
-            }
-        }
+        "fingerIndex": 3
     },
     {
         "id": "prod-ring-005",
@@ -398,20 +346,7 @@ PRODUCTS_MASTER = [
         "anchorProfile": {"anchorType": "FINGER_BASE", "fingerIndex": 3},
         "defaultScale": 1.0,
         "mirrorForOppositeEar": False,
-        "fingerIndex": 3,
-        "metadata": {
-            "ringConfig": {
-                "id": "prod-ring-005",
-                "gemColor": "#9B59B6",
-                "gemShape": "pear",
-                "gemScale": 1.12,
-                "bandMetal": "rose",
-                "bandThickness": 0.115,
-                "hasHalo": True,
-                "haloColor": "#FFFFFF",
-                "accentStones": True,
-            }
-        }
+        "fingerIndex": 3
     },
 
     # ── Bangles ───────────────────────────────────────────────────────────────
@@ -522,7 +457,7 @@ def build_product_dto(p: Dict[str, Any], detailed: bool = True) -> Dict[str, Any
                 "fingerIndex": p["fingerIndex"],
                 "isActive": True
             },
-            "metadata": p.get("metadata", {})
+            "metadata": {}
         })
     return base
 
