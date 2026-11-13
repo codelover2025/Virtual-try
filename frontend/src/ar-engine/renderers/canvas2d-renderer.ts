@@ -127,12 +127,12 @@ export class Canvas2dRenderer {
       kindKey.includes('BANGLE') || kindKey.includes('BRACELET') || kindKey.includes('WATCH');
 
     if (isNecklace) {
-      // 2. Necklace width = ~0.55 x shoulder width, scaled with depth
+      // 2. Chain width: asset has 28% side padding; scale w by 0.74 so the actual chain spans ~0.55 x shoulder width
       const shoulderRef = pose.scale * 100;
-      w = Math.max(120, Math.min(800, shoulderRef * 0.55));
+      w = Math.max(160, Math.min(850, shoulderRef * 0.74));
       h = w * aspect;
       originX = -w / 2;
-      originY = -h * 0.44; // Anchored at neck base to connect smoothly to shoulder line
+      originY = -h * 0.35; // Anchored at neck base so top ends connect directly to shoulder line
     } else if (isEarring) {
       // Golden calibration from app.py: earring_w = max(14, int(face_width * 0.12))
       const faceW = pose.scale * 100;
@@ -213,7 +213,7 @@ export class Canvas2dRenderer {
       const numSlices = 40;
       const sliceW = w / numSlices;
       const srcSliceW = img.naturalWidth / numSlices;
-      const sag = Math.max(6, Math.min(26, h * 0.12));
+      const sag = Math.max(6, Math.min(32, h * 0.14));
       const k = 1.25;
       const coshK = Math.cosh(k);
       const vertOffset = pose.verticalOffset ?? 0;
@@ -232,10 +232,10 @@ export class Canvas2dRenderer {
         // while the center and pendant drape down into the chest.
         const drape = vertOffset * (1 - catRatio);
 
-        // Fade the back portion near the neck sides
+        // Fade only at the very extreme outer edge (|t| > 0.92) where the chain passes behind the neck over the shoulder line
         let edgeFade = 1.0;
-        if (absT > 0.65) {
-          const f = Math.max(0, Math.min(1, (0.98 - absT) / 0.33));
+        if (absT > 0.92) {
+          const f = Math.max(0, Math.min(1, (1.0 - absT) / 0.08));
           edgeFade = f * f * (3 - 2 * f);
         }
 
