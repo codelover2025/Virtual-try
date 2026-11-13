@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { cn, formatPrice } from '../lib/utils.js';
-import { Sparkles, Check, Loader2 } from 'lucide-react';
+import { Sparkles, Check, Loader2, X } from 'lucide-react';
 import type { JewelleryKind } from '@vj/shared';
 
 export interface JewellerySelectorItem {
@@ -19,8 +19,10 @@ export interface JewellerySelectorItem {
 export interface JewellerySelectorProps {
   items: JewellerySelectorItem[];
   selectedId?: string | null;
+  selectedIds?: string[];
   loadingId?: string | null;
   onSelect: (item: JewellerySelectorItem) => void;
+  onRemove?: (item: JewellerySelectorItem) => void;
   className?: string;
   title?: string;
   initialScrollLeft?: number;
@@ -30,8 +32,10 @@ export interface JewellerySelectorProps {
 export function JewellerySelector({
   items,
   selectedId,
+  selectedIds,
   loadingId,
   onSelect,
+  onRemove,
   className,
   title = 'Switch Piece in Studio',
   initialScrollLeft,
@@ -68,61 +72,77 @@ export function JewellerySelector({
         className="flex items-center gap-3 overflow-x-auto pb-1 pt-1 scrollbar-thin scrollbar-thumb-muted-foreground/20"
       >
         {items.map((item) => {
-          const isSelected = selectedId === item.id;
+          const isSelected = selectedId === item.id || (selectedIds ? selectedIds.includes(item.id) : false);
           const isLoading = loadingId === item.id;
           const image = item.primaryImage?.url || item.imageUrl;
 
           return (
-            <button
-              key={item.id}
-              type="button"
-              data-testid="jewellery-selector-item"
-              onClick={() => onSelect(item)}
-              disabled={isLoading}
-              className={cn(
-                'group relative flex-shrink-0 flex items-center gap-2.5 rounded-xl border p-1.5 transition-all text-left duration-200 select-none',
-                isSelected
-                  ? 'border-primary bg-primary/10 shadow-sm ring-2 ring-primary/30'
-                  : 'border-border/70 bg-background/80 hover:border-primary/50 hover:bg-muted/50',
-                isLoading ? 'opacity-70 cursor-wait' : '',
-              )}
-            >
-              <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted flex-shrink-0">
-                {image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={image} alt={item.name} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
-                    ✦
-                  </div>
+            <div key={item.id} className="relative flex-shrink-0">
+              <button
+                type="button"
+                data-testid="jewellery-selector-item"
+                onClick={() => onSelect(item)}
+                disabled={isLoading}
+                className={cn(
+                  'group relative flex items-center gap-2.5 rounded-xl border p-1.5 transition-all text-left duration-200 select-none',
+                  isSelected
+                    ? 'border-primary bg-primary/10 shadow-sm ring-2 ring-primary/30'
+                    : 'border-border/70 bg-background/80 hover:border-primary/50 hover:bg-muted/50',
+                  isLoading ? 'opacity-70 cursor-wait' : '',
                 )}
-                {isLoading ? (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                    <Loader2 className="h-5 w-5 text-primary animate-spin" />
-                  </div>
-                ) : isSelected ? (
-                  <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                    <Check className="h-4 w-4 text-primary font-bold drop-shadow" />
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="pr-2 max-w-[120px]">
-                <p className="text-xs font-medium truncate text-foreground leading-tight group-hover:text-primary transition-colors">
-                  {item.name}
-                </p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
-                    {item.jewelleryKind.replace(/_/g, ' ')}
-                  </span>
-                  {item.priceCents != null ? (
-                    <span className="text-[11px] font-semibold text-primary">
-                      {formatPrice(item.priceCents, item.currency ?? 'INR')}
-                    </span>
+              >
+                <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted flex-shrink-0">
+                  {image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={image} alt={item.name} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                      ✦
+                    </div>
+                  )}
+                  {isLoading ? (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                    </div>
+                  ) : isSelected ? (
+                    <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                      <Check className="h-4 w-4 text-primary font-bold drop-shadow" />
+                    </div>
                   ) : null}
                 </div>
-              </div>
-            </button>
+
+                <div className="pr-2 max-w-[120px]">
+                  <p className="text-xs font-medium truncate text-foreground leading-tight group-hover:text-primary transition-colors">
+                    {item.name}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
+                      {item.jewelleryKind.replace(/_/g, ' ')}
+                    </span>
+                    {item.priceCents != null ? (
+                      <span className="text-[11px] font-semibold text-primary">
+                        {formatPrice(item.priceCents, item.currency ?? 'INR')}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </button>
+
+              {isSelected && onRemove ? (
+                <button
+                  type="button"
+                  title="Remove piece"
+                  aria-label={`Remove ${item.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove(item);
+                  }}
+                  className="absolute -top-1.5 -right-1.5 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-destructive-foreground hover:scale-110 transition-transform shadow-sm cursor-pointer"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              ) : null}
+            </div>
           );
         })}
       </div>

@@ -27,6 +27,9 @@ export class Canvas2dRenderer {
   private currentOpacity = 1;
   private currentUrl = '';
 
+  // Multi-category overlay map: category/kind -> loaded image entry
+  private readonly overlays = new Map<string, { img: HTMLImageElement; url: string; mirrorSecondary: boolean }>();
+
   // Image asset cache: URL → loaded HTMLImageElement with metadata
   private readonly imageCache = new Map<string, { img: HTMLImageElement; bytes: number; lastUsed: number }>();
   private totalCacheBytes = 0;
@@ -49,20 +52,40 @@ export class Canvas2dRenderer {
 
   // ─── Asset Loading ─────────────────────────────────────────────────────────
 
-  async loadOverlay(url: string, mirrorSecondary = false): Promise<void> {
+  async loadOverlay(url: string, mirrorSecondary = false, key?: string): Promise<void> {
     this.mirrorSecondary = mirrorSecondary;
 
-    if (this.currentUrl === url) return; // already loaded
+    if (key && this.overlays.get(key)?.url === url) return;
+    if (!key && this.currentUrl === url) return; // already loaded
 
-    // Fade out before switching.
-    if (this.currentUrl !== '') {
+    // Fade out before switching if single overlay
+    if (!key && this.currentUrl !== '') {
       this.targetOpacity = 0;
       await this._waitOpacityReached(0, 6);
     }
 
-    this.image = await this._loadCached(url);
+    const img = await this._loadCached(url);
+    if (key) {
+      this.overlays.set(key, { img, url, mirrorSecondary });
+    }
+    this.image = img;
     this.currentUrl = url;
     this.targetOpacity = 1;
+    this.currentOpacity = 1;
+  }
+
+  removeOverlay(key: string): void {
+    this.overlays.delete(key);
+    if (this.overlays.size === 0) {
+      this.image = null;
+      this.currentUrl = '';
+    } else {
+      const remaining = Array.from(this.overlays.values());
+      const last = remaining[remaining.length - 1];
+      this.image = last.img;
+      this.currentUrl = last.url;
+      this.mirrorSecondary = last.mirrorSecondary;
+    }
   }
 
   /** Preload an image URL into cache without making it the active overlay. */
@@ -88,8 +111,24 @@ export class Canvas2dRenderer {
     this.ctx.restore();
   }
 
-  drawJewellery(pose: PoseFit, secondary = false, kind?: string): void {
-    if (!this.image || !pose.visible) return;
+  drawJewellery(pose: PoseFit, secondary = false, kind?: string, overlayKey?: string): void {
+    let img = this.image;
+    let url = this.currentUrl;
+    let mirrorSec = this.mirrorSecondary;
+
+    if (overlayKey && this.overlays.has(overlayKey)) {
+      const entry = this.overlays.get(overlayKey)!;
+      img = entry.img;
+      url = entry.url;
+      mirrorSec = entry.mirrorSecondary;
+    } else if (kind && this.overlays.has(kind)) {
+      const entry = this.overlays.get(kind)!;
+      img = entry.img;
+      url = entry.url;
+      mirrorSec = entry.mirrorSecondary;
+    }
+
+    if (!img || !pose.visible) return;
 
     // Advance opacity with smooth interpolation.
     if (this.currentOpacity !== this.targetOpacity) {
@@ -100,15 +139,14 @@ export class Canvas2dRenderer {
     }
     if (this.currentOpacity < 0.02) return;
 
-    const img = this.image;
     const pos = secondary && pose.secondaryPosition ? pose.secondaryPosition : pose.position;
 
     const isNecklace =
       kind === 'NECKLACE' ||
       kind === 'PENDANT' ||
       kind === 'MANGALSUTRA' ||
-      this.currentUrl.includes('neck') ||
-      this.currentUrl.includes('pendant');
+      url.includes('neck') ||
+      url.includes('pendant');
 
     let w: number;
     let h: number;
@@ -120,7 +158,7 @@ export class Canvas2dRenderer {
       : 260 / 320;
 
     const kindKey = (kind ?? '').toUpperCase();
-    const isEarring = kindKey.includes('EARRING') || this.currentUrl.includes('earring');
+    const isEarring = kindKey.includes('EARRING') || url.includes('earring');
     const isNose = kindKey.includes('NOSE');
     const isRing = kindKey === 'RINGS' || kindKey === 'RING';
     const isBangle =
@@ -273,16 +311,22 @@ export class Canvas2dRenderer {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  clearJewellery(): void {
+  clearJewellery(key?: string): void {
+    if (key) {
+      this.removeOverlay(key);
+      return;
+    }
     this.image = null;
     this.currentUrl = '';
+    this.overlays.clear();
     this.currentOpacity = 1;
     this.targetOpacity = 1;
     this.clear();
   }
 
-  hasActiveOverlay(): boolean {
-    return this.image !== null;
+  hasActiveOverlay(key?: string): boolean {
+    if (key) return this.overlays.has(key);
+    return this.image !== null || this.overlays.size > 0;
   }
 
   getActiveUrl(): string {

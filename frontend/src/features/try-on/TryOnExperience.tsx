@@ -18,6 +18,8 @@ import {
   Camera,
   CameraOff,
   Loader2,
+  X,
+  Sparkles as SparklesIcon,
 } from 'lucide-react';
 import {
   Button,
@@ -51,6 +53,7 @@ export interface TryOnExperienceProps {
   product: ProductDetailDto;
   alternativeProducts?: ProductListItemDto[];
   initialKindFilter?: JewelleryKind | 'ALL';
+  mode?: 'single' | 'multi';
   onClose?: () => void;
 }
 
@@ -58,12 +61,20 @@ export function TryOnExperience({
   product: initialProduct,
   alternativeProducts,
   initialKindFilter = 'ALL',
+  mode: initialMode = 'single',
   onClose,
 }: TryOnExperienceProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
+  const [studioMode, setStudioMode] = useState<'single' | 'multi'>(initialMode);
   const [currentProduct, setCurrentProduct] = useState<ProductDetailDto>(initialProduct);
+  const [activeMultiProducts, setActiveMultiProducts] = useState<Map<JewelleryKind, ProductDetailDto>>(() => {
+    const map = new Map<JewelleryKind, ProductDetailDto>();
+    map.set(initialProduct.jewelleryKind, initialProduct);
+    return map;
+  });
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const threeRef = useRef<HTMLCanvasElement>(null);
@@ -99,6 +110,10 @@ export function TryOnExperience({
   const [fineTuneScale, setFineTuneScale] = useState(1.0);
   const [fineTuneY, setFineTuneY] = useState(0);
 
+  // Necklace fine-tuning (only size and length in multi-jewellery mode)
+  const [necklaceScale, setNecklaceScale] = useState(1.0);
+  const [necklaceLengthY, setNecklaceLengthY] = useState(0);
+
   const handleFineTuneChange = (scale: number, y: number) => {
     setFineTuneScale(scale);
     setFineTuneY(y);
@@ -109,6 +124,18 @@ export function TryOnExperience({
     setFineTuneScale(1.0);
     setFineTuneY(0);
     engineRef.current?.setFineTune(1.0, 0);
+  };
+
+  const handleNecklaceFineTuneChange = (scale: number, y: number) => {
+    setNecklaceScale(scale);
+    setNecklaceLengthY(y);
+    engineRef.current?.setNecklaceFineTune(scale, y);
+  };
+
+  const handleResetNecklaceFineTune = () => {
+    setNecklaceScale(1.0);
+    setNecklaceLengthY(0);
+    engineRef.current?.setNecklaceFineTune(1.0, 0);
   };
 
   const [debugAxes, setDebugAxes] = useState(false);
@@ -371,28 +398,64 @@ export function TryOnExperience({
         }
       });
 
-      const config = await toJewelleryConfig(
-        currentProduct.jewelleryKind,
-        asset,
-        currentProduct.id,
-        (currentProduct.metadata as any)?.ringConfig,
-        (currentProduct.metadata as any)?.bangleConfig,
-      );
-      await engine.start(
-        {
-          video: videoRef.current,
-          overlayCanvas: overlayRef.current,
-          threeCanvas: threeRef.current,
-        },
-        {
-          ...config,
-          mirroredPreview: mirrorOn,
-          targetFps: 30,
-          debugLandmarks: isDebugMode,
-        },
-      );
+      if (studioMode === 'multi' && activeMultiProducts.size > 0) {
+        const primaryProduct = Array.from(activeMultiProducts.values())[0];
+        const primaryConfig = await toJewelleryConfig(
+          primaryProduct.jewelleryKind,
+          primaryProduct.tryOnAsset,
+          primaryProduct.id,
+          (primaryProduct.metadata as any)?.ringConfig,
+          (primaryProduct.metadata as any)?.bangleConfig,
+        );
+        await engine.start(
+          {
+            video: videoRef.current,
+            overlayCanvas: overlayRef.current,
+            threeCanvas: threeRef.current,
+          },
+          {
+            ...primaryConfig,
+            mirroredPreview: mirrorOn,
+            targetFps: 30,
+            debugLandmarks: isDebugMode,
+          },
+        );
+        for (const [kind, prod] of activeMultiProducts) {
+          if (kind !== primaryProduct.jewelleryKind) {
+            const cfg = await toJewelleryConfig(
+              prod.jewelleryKind,
+              prod.tryOnAsset,
+              prod.id,
+              (prod.metadata as any)?.ringConfig,
+              (prod.metadata as any)?.bangleConfig,
+            );
+            await engine.addOrUpdateJewellery(cfg);
+          }
+        }
+      } else {
+        const config = await toJewelleryConfig(
+          currentProduct.jewelleryKind,
+          asset,
+          currentProduct.id,
+          (currentProduct.metadata as any)?.ringConfig,
+          (currentProduct.metadata as any)?.bangleConfig,
+        );
+        await engine.start(
+          {
+            video: videoRef.current,
+            overlayCanvas: overlayRef.current,
+            threeCanvas: threeRef.current,
+          },
+          {
+            ...config,
+            mirroredPreview: mirrorOn,
+            targetFps: 30,
+            debugLandmarks: isDebugMode,
+          },
+        );
+      }
       setRunning(true);
-      toast.success('Studio camera connected');
+      toast.success(studioMode === 'multi' ? 'Multi-Jewellery Studio camera connected' : 'Studio camera connected');
     } catch (err: unknown) {
       const errorObj = err as { name?: string; message?: string };
       const errName = errorObj?.name || '';
@@ -447,15 +510,16 @@ export function TryOnExperience({
     engineRef.current?.setMirrored(next);
   }
 
-  // Handle switching jewellery piece in-studio: every time user chooses any jewellery,
-  // close the camera session and present the "Open Camera" option for the newly chosen piece.
+  // Handle switching jewellery piece in-studio:
+  // - Keeps the camera stream and models loaded once per session
+  // - In Single Mode: same-category swaps cleanly; different category directly transfers to Multi Mode!
+  // - In Multi Mode: adds or swaps category piece seamlessly
   async function handleSelectPiece(item: JewellerySelectorItem) {
-    if (item.id === currentProduct.id) return;
+    if (studioMode === 'single' && item.id === currentProduct.id) return;
+    if (studioMode === 'multi' && activeMultiProducts.get(item.jewelleryKind)?.id === item.id) return;
+
     setSwitchingPieceId(item.id);
     try {
-      // Cleanly stop any running camera session so the user gets the "Open Camera" option
-      stopCamera();
-
       let detail: ProductDetailDto;
       try {
         detail = await api.catalog.getProduct(item.id);
@@ -464,15 +528,34 @@ export function TryOnExperience({
         if (!fallback) throw new Error('Product not found in catalogue');
         detail = fallback;
       }
-      setCurrentProduct(detail);
-      handleResetFineTune();
 
-      // 5. SESSION CONTINUITY: update selectedItemId and activeCategory together
-      useStudioStore.getState().selectPieceInStudio(detail);
+      // Stop camera session cleanly so it always displays the Studio Virtual Mirror (Image 2)
+      if (running || engineRef.current) {
+        stopCamera();
+      }
 
-      // If running on standalone /try-on route, keep route in sync without page unmount
-      if (typeof window !== 'undefined' && window.location.pathname.startsWith('/try-on')) {
-        window.history.replaceState(null, '', `/try-on/${detail.id}`);
+      if (studioMode === 'single') {
+        setCurrentProduct(detail);
+        const newMap = new Map<JewelleryKind, ProductDetailDto>();
+        newMap.set(detail.jewelleryKind, detail);
+        setActiveMultiProducts(newMap);
+        handleResetFineTune();
+
+        useStudioStore.getState().selectPieceInStudio(detail);
+
+        if (typeof window !== 'undefined' && window.location.pathname.startsWith('/try-on') && !window.location.pathname.includes('/multi')) {
+          window.history.replaceState(null, '', `/try-on/${detail.id}`);
+        }
+
+        toast.info(`Selected ${detail.name}. Click "Open Camera" to try on.`);
+      } else {
+        // Multi mode: Add or update the piece of this category
+        const newMap = new Map(activeMultiProducts);
+        newMap.set(detail.jewelleryKind, detail);
+        setActiveMultiProducts(newMap);
+        setCurrentProduct(detail);
+
+        toast.info(`Selected ${detail.name}. Click "Open Camera" to try on.`);
       }
 
       if (!isOfflineMode) {
@@ -482,11 +565,30 @@ export function TryOnExperience({
           meta: { jewelleryKind: detail.jewelleryKind },
         });
       }
-      toast.info(`Selected ${detail.name}. Click "Open Camera" to try on.`);
     } catch (err) {
       toast.error('Could not switch jewellery item');
     } finally {
       setSwitchingPieceId(null);
+    }
+  }
+
+  async function handleRemovePiece(item: { id: string; jewelleryKind: JewelleryKind; name?: string }) {
+    if (activeMultiProducts.size <= 1) {
+      toast.info('At least one piece must remain in studio. Pick another piece to swap.');
+      return;
+    }
+    const newMap = new Map(activeMultiProducts);
+    newMap.delete(item.jewelleryKind);
+    setActiveMultiProducts(newMap);
+
+    const remaining = Array.from(newMap.values());
+    if (remaining.length > 0) {
+      setCurrentProduct(remaining[0]);
+    }
+
+    if (running && engineRef.current) {
+      engineRef.current.removeJewellery(item.jewelleryKind);
+      toast.info(`Removed ${item.name || item.jewelleryKind.replace(/_/g, ' ').toLowerCase()}`);
     }
   }
 
@@ -695,6 +797,69 @@ export function TryOnExperience({
             guideMode={detectorForKind(currentProduct.jewelleryKind)}
           />
 
+          {/* Active Multi-Fitting Bar (Visible in Multi-Jewellery Mode) */}
+          {studioMode === 'multi' && (
+            <div className="mt-3 w-full max-w-xl p-3 rounded-2xl border border-primary/20 bg-card/95 shadow-md backdrop-blur-md space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+                  <SparklesIcon className="h-3.5 w-3.5" />
+                  <span>Active Multi-Fitting ({activeMultiProducts.size} pieces)</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setStudioMode('single');
+                    const single =
+                      activeMultiProducts.get(currentProduct.jewelleryKind) ??
+                      Array.from(activeMultiProducts.values())[0];
+                    if (single) {
+                      const newMap = new Map<JewelleryKind, ProductDetailDto>();
+                      newMap.set(single.jewelleryKind, single);
+                      setActiveMultiProducts(newMap);
+                      setCurrentProduct(single);
+                      if (running && engineRef.current) {
+                        void toJewelleryConfig(
+                          single.jewelleryKind,
+                          single.tryOnAsset,
+                          single.id,
+                          (single.metadata as any)?.ringConfig,
+                          (single.metadata as any)?.bangleConfig,
+                        ).then((c) => engineRef.current?.setJewellery(c));
+                      }
+                    }
+                    toast.info('Returned to Single Piece Studio');
+                  }}
+                  className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                >
+                  Exit Multi Mode
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {Array.from(activeMultiProducts.values()).map((p) => (
+                  <span
+                    key={p.id}
+                    className="inline-flex items-center gap-1.5 text-xs bg-muted/80 border border-primary/20 px-2.5 py-1 rounded-full font-medium text-foreground"
+                  >
+                    <span className="text-[10px] uppercase font-mono text-primary/80">
+                      {p.jewelleryKind.replace(/_/g, ' ')}:
+                    </span>
+                    <span className="truncate max-w-[130px]">{p.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePiece(p)}
+                      title={`Remove ${p.name}`}
+                      className="ml-1 text-muted-foreground hover:text-destructive hover:scale-110 transition-colors cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Quick In-Studio Jewellery Switcher Strip */}
           <div className="mt-4 w-full max-w-xl space-y-2">
             <TryOnCategorySwitch
@@ -705,8 +870,10 @@ export function TryOnExperience({
             <JewellerySelector
               items={visibleItems}
               selectedId={currentProduct.id}
+              selectedIds={studioMode === 'multi' ? Array.from(activeMultiProducts.values()).map((p) => p.id) : undefined}
               loadingId={switchingPieceId}
               onSelect={handleSelectPiece}
+              onRemove={studioMode === 'multi' ? handleRemovePiece : undefined}
               initialScrollLeft={switcherScrollPos}
               onScrollChange={setSwitcherScrollPos}
             />
@@ -764,57 +931,178 @@ export function TryOnExperience({
               </div>
             </div>
 
-            {/* Atelier Fit Fine-Tuning (Universal Fit Session Controls) */}
-            <div className="rounded-3xl border bg-card p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sliders className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">Fine-Tune Fit</span>
+            {/* Atelier Fit Fine-Tuning: in Multi Mode, ONLY Size & Length of Necklace can be changed */}
+            {studioMode === 'multi' ? (
+              (() => {
+                const activeNecklace =
+                  activeMultiProducts.get('NECKLACE') ??
+                  activeMultiProducts.get('PENDANT') ??
+                  activeMultiProducts.get('MANGALSUTRA');
+
+                return (
+                  <div className="rounded-3xl border bg-card p-5 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sliders className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Necklace Fit Adjustment</span>
+                      </div>
+                      {activeNecklace && (necklaceScale !== 1.0 || necklaceLengthY !== 0) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleResetNecklaceFineTune}
+                          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <RotateCcw className="h-3 w-3 mr-1" /> Reset
+                        </Button>
+                      )}
+                    </div>
+
+                    {activeNecklace ? (
+                      <div className="space-y-3 text-xs">
+                        <div className="rounded-xl bg-primary/5 border border-primary/20 p-2.5 text-[11px] text-foreground flex items-center gap-2">
+                          <SparklesIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <span>
+                            Adjusting <strong>{activeNecklace.name}</strong> size and drape length.
+                          </span>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-muted-foreground mb-1">
+                            <span>Necklace Size</span>
+                            <span className="font-mono text-[11px] text-foreground">
+                              {Math.round(necklaceScale * 100)}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.80"
+                            max="1.20"
+                            step="0.02"
+                            value={necklaceScale}
+                            onChange={(e) =>
+                              handleNecklaceFineTuneChange(parseFloat(e.target.value), necklaceLengthY)
+                            }
+                            className="w-full accent-primary cursor-pointer"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-muted-foreground mb-1">
+                            <span>Necklace Length (Drape)</span>
+                            <span className="font-mono text-[11px] text-foreground">
+                              {necklaceLengthY > 0 ? `+${necklaceLengthY}` : necklaceLengthY} px
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="-30"
+                            max="30"
+                            step="1"
+                            value={necklaceLengthY}
+                            onChange={(e) =>
+                              handleNecklaceFineTuneChange(necklaceScale, parseInt(e.target.value, 10))
+                            }
+                            className="w-full accent-primary cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-border p-4 text-center space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          No necklace currently equipped in multi-fitting.
+                        </p>
+                        <p className="text-[11px] text-primary font-medium">
+                          Add a necklace to the fitting to adjust size and drape length.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setKindFilter('NECKLACE')}
+                          className="rounded-full text-xs h-7 mt-1 cursor-pointer"
+                        >
+                          Browse Necklaces
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
+            ) : (
+              /* Single Piece Mode: Standard single fine-tune + Direct transfer banner */
+              <div className="space-y-4">
+                <div className="rounded-3xl border bg-card p-5 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sliders className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">Fine-Tune Fit</span>
+                    </div>
+                    {(fineTuneScale !== 1.0 || fineTuneY !== 0) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleResetFineTune}
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" /> Reset
+                      </Button>
+                    )}
+                  </div>
+                  <div className="space-y-3 text-xs">
+                    <div>
+                      <div className="flex justify-between text-muted-foreground mb-1">
+                        <span>Size Ratio</span>
+                        <span className="font-mono text-[11px] text-foreground">{Math.round(fineTuneScale * 100)}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.80"
+                        max="1.20"
+                        step="0.02"
+                        value={fineTuneScale}
+                        onChange={(e) => handleFineTuneChange(parseFloat(e.target.value), fineTuneY)}
+                        className="w-full accent-primary cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-muted-foreground mb-1">
+                        <span>Vertical Position</span>
+                        <span className="font-mono text-[11px] text-foreground">{fineTuneY > 0 ? `+${fineTuneY}` : fineTuneY} px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-30"
+                        max="30"
+                        step="1"
+                        value={fineTuneY}
+                        onChange={(e) => handleFineTuneChange(fineTuneScale, parseInt(e.target.value, 10))}
+                        className="w-full accent-primary cursor-pointer"
+                      />
+                    </div>
+                  </div>
                 </div>
-                {(fineTuneScale !== 1.0 || fineTuneY !== 0) && (
+
+                {/* Direct transfer to Multi-Jewellery studio card */}
+                <div className="rounded-3xl border border-primary/30 bg-primary/5 p-4 shadow-sm flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <SparklesIcon className="h-3.5 w-3.5 text-primary" /> Multi-Jewellery Studio
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Mix and match necklace, earrings, rings, and bangles together.
+                    </p>
+                  </div>
                   <Button
-                    variant="ghost"
                     size="sm"
-                    onClick={handleResetFineTune}
-                    className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      setStudioMode('multi');
+                      toast.info('Switched to Multi-Jewellery Studio! Pick additional pieces below to wear together.');
+                    }}
+                    className="rounded-full text-xs h-8 px-3.5 shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
                   >
-                    <RotateCcw className="h-3 w-3 mr-1" /> Reset
+                    Try Multi
                   </Button>
-                )}
-              </div>
-              <div className="space-y-3 text-xs">
-                <div>
-                  <div className="flex justify-between text-muted-foreground mb-1">
-                    <span>Size Ratio</span>
-                    <span className="font-mono text-[11px] text-foreground">{Math.round(fineTuneScale * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0.80"
-                    max="1.20"
-                    step="0.02"
-                    value={fineTuneScale}
-                    onChange={(e) => handleFineTuneChange(parseFloat(e.target.value), fineTuneY)}
-                    className="w-full accent-primary cursor-pointer"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between text-muted-foreground mb-1">
-                    <span>Vertical Position</span>
-                    <span className="font-mono text-[11px] text-foreground">{fineTuneY > 0 ? `+${fineTuneY}` : fineTuneY} px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="-30"
-                    max="30"
-                    step="1"
-                    value={fineTuneY}
-                    onChange={(e) => handleFineTuneChange(fineTuneScale, parseInt(e.target.value, 10))}
-                    className="w-full accent-primary cursor-pointer"
-                  />
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Fitting & Sensor Diagnostic Card */}
             <div className="rounded-2xl border bg-muted/40 p-4 text-xs space-y-2.5">

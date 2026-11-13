@@ -203,7 +203,17 @@ export default function Home() {
                   asChild
                   variant="outline"
                   size="lg"
-                  className="rounded-full px-7 py-6 text-sm font-medium hover:border-primary/50 transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                  className="rounded-full px-7 py-6 text-sm font-medium border-primary/40 hover:bg-primary/5 hover:border-primary transition focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+                >
+                  <Link href="/try-on/multi">
+                    <Layers className="mr-2 h-4 w-4 text-primary" aria-hidden="true" /> Multi-Jewellery Studio
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="lg"
+                  className="rounded-full px-6 py-6 text-sm font-medium hover:text-primary transition"
                 >
                   <Link href="/products">
                     Explore Catalogue <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />

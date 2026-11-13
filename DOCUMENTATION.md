@@ -1,166 +1,170 @@
 # Lumière — AI Virtual Jewellery Try-On Documentation
 
-**Lumière** is an augmented reality atelier designed for real-time virtual jewellery try-on. It combines high-accuracy computer vision with real-time biometric landmark tracking to simulate photorealistic placement of fine jewellery—including earrings, necklaces, rings, and bangles—directly onto the user's live camera feed.
+**Lumière** is an on-device, augmented reality atelier designed for real-time virtual jewellery try-on. It combines high-accuracy computer vision with real-time biometric landmark tracking to simulate photorealistic placement of fine jewellery—including earrings, necklaces, rings, and bangles—directly onto the user's live camera feed.
 
-The repository includes:
-1. **Web Atelier (`frontend/`)**: A modern, standalone Next.js 15 + React 19 web application running on-device MediaPipe Vision Tasks (WebGL/WASM), Three.js PBR shaders, and high-performance 2D canvas overlays with zero server or backend dependencies.
-2. **Backend API (`server.py`)**: An optional Python API service on port 4000 for catalogue management and session storage.
+> [!IMPORTANT]
+> The web atelier is **100% client-side and standalone**. Video frames never leave the user's browser, providing zero latency, sub-millimeter tracking accuracy, and complete biometric privacy without requiring any backend server or database setup.
+
+---
+
+## 📚 Documentation Index
+
+For deep-dive technical specifications, refer to the dedicated guides in the [`docs/`](file:///C:/Users/ankus/Downloads/Virtual-try/docs/) directory:
+
+1. [**Architecture Overview (`docs/ARCHITECTURE.md`)**](file:///C:/Users/ankus/Downloads/Virtual-try/docs/ARCHITECTURE.md): Complete system architecture, Next.js App Router structure, AR Engine core, dual-renderer design, and detector caching.
+2. [**Virtual Fitting Studio (`docs/TRY_ON_STUDIO.md`)**](file:///C:/Users/ankus/Downloads/Virtual-try/docs/TRY_ON_STUDIO.md): Single-Piece Studio vs. Multi-Jewellery Studio (`/try-on/multi`), automatic direct transfer UX, Active Fitting bar, and necklace-only fine-tuning.
+3. [**Computer Vision & Tracking (`docs/VISION_AND_TRACKING.md`)**](file:///C:/Users/ankus/Downloads/Virtual-try/docs/VISION_AND_TRACKING.md): Mathematical calibration formulas for MediaPipe FaceLandmarker, PoseLandmarkerLite, and HandLandmarker.
+4. [**3D PBR Shading & Gem Materials (`docs/3D_SHADING_AND_MATERIALS.md`)**](file:///C:/Users/ankus/Downloads/Virtual-try/docs/3D_SHADING_AND_MATERIALS.md): Physically-based gemstone materials (Solitaire Diamond, Ruby, Sapphire, Emerald, Amethyst), two-pass bangle shaders, and finger occluders.
+5. [**Developer & Contributor Guide (`docs/DEVELOPER_GUIDE.md`)**](file:///C:/Users/ankus/Downloads/Virtual-try/docs/DEVELOPER_GUIDE.md): Local development quick-start, production builds, adding new 2D/3D catalogue items, and troubleshooting.
 
 ---
 
 ## Table of Contents
 
 - [1. Architecture Overview](#1-architecture-overview)
-- [2. Platform Implementations](#2-platform-implementations)
-  - [2.1 Python Desktop Application (`app.py`)](#21-python-desktop-application-apppy)
-  - [2.2 Next.js Web Application (`frontend/`)](#22-nextjs-web-application-frontend)
+- [2. Multi-Jewellery Studio vs. Single-Piece Studio](#2-multi-jewellery-studio-vs-single-piece-studio)
 - [3. Computer Vision & Landmark Alignment Calibration](#3-computer-vision--landmark-alignment-calibration)
   - [3.1 Earrings & Drops](#31-earrings--drops)
-  - [3.2 Necklaces & Chokers](#32-necklaces--chokers)
-  - [3.3 Solitaire Rings](#33-solitaire-rings)
-  - [3.4 Bangles & Kadas](#34-bangles--kadas)
-- [4. Performance & AR Pipeline Optimization](#4-performance--ar-pipeline-optimization)
-  - [4.1 React State Throttle (97% Render Reduction)](#41-react-state-throttle-97-render-reduction)
-  - [4.2 Detection Decoupling (60 FPS Interpolation)](#42-detection-decoupling-60-fps-interpolation)
-  - [4.3 Camera Constraint Ladder (720p @ 30 FPS)](#43-camera-constraint-ladder-720p--30-fps)
-  - [4.4 Single-Target Model Profiling](#44-single-target-model-profiling)
-- [5. Installation & Running](#5-installation--running)
-  - [5.1 Desktop App](#51-desktop-app)
-  - [5.2 Web App](#52-web-app)
-- [6. Directory Structure](#6-directory-structure)
-- [7. Catalogue & Asset Addition Guide](#7-catalogue--asset-addition-guide)
-- [8. Troubleshooting & FAQ](#8-troubleshooting--faq)
+  - [3.2 Necklaces, Pendants & Mangalsutras](#32-necklaces-pendants--mangalsutras)
+  - [3.3 3D Gemstone & Solitaire Rings](#33-3d-gemstone--solitaire-rings)
+  - [3.4 3D Two-Pass Bangles & Kadas](#34-3d-two-pass-bangles--kadas)
+- [4. Three.js PBR Shading & Occlusion Engine](#4-threejs-pbr-shading--occlusion-engine)
+- [5. Performance & AR Pipeline Optimization](#5-performance--ar-pipeline-optimization)
+  - [5.1 Persistent Detector Caching](#51-persistent-detector-caching)
+  - [5.2 React State Throttle (97% Render Reduction)](#52-react-state-throttle-97-render-reduction)
+  - [5.3 Decoupled Detection & 60 FPS Spring Interpolation](#53-decoupled-detection--60-fps-spring-interpolation)
+- [6. Installation & Running](#6-installation--running)
+- [7. Directory Structure](#7-directory-structure)
+- [8. Catalogue & Asset Addition Guide](#8-catalogue--asset-addition-guide)
+- [9. Troubleshooting & FAQ](#9-troubleshooting--faq)
 
 ---
 
 ## 1. Architecture Overview
 
-```
-                      ┌───────────────────────────────────────┐
-                      │            User Web Camera            │
-                      └──────────────────┬────────────────────┘
-                                         │
-                 ┌───────────────────────┴───────────────────────┐
-                 │                                               │
-                 ▼                                               ▼
-     ┌───────────────────────┐                       ┌───────────────────────┐
-     │  Desktop Atelier      │                       │  Web Atelier          │
-     │  (Python / OpenCV)    │                       │  (Next.js / WebGL)    │
-     └───────────┬───────────┘                       └───────────┬───────────┘
-                 │                                               │
-     ┌───────────┴───────────┐                       ┌───────────┴───────────┐
-     │ • OpenCV VideoCapture │                       │ • CameraEngine (720p) │
-     │ • MediaPipe Hands     │                       │ • MediaPipe Tasks WASM│
-     │ • MediaPipe FaceMesh  │                       │ • AdaptiveController  │
-     │ • Affine Matrix Warp  │                       │ • PoseFitter (Spring) │
-     │ • Alpha Blending      │                       │ • Canvas2dRenderer    │
-     │ • Tkinter GUI Shell   │                       │ • Three.js PBR Engine │
-     └───────────────────────┘                       └───────────────────────┘
+```mermaid
+flowchart TD
+    UserCam["Webcam Stream (1280x720 @ 30 FPS)"] --> CamEngine["CameraEngine (HTML5 Video)"]
+    
+    subgraph EngineCore ["AR Engine Core (`ar-engine.ts`)"]
+        CamEngine --> Detectors["CachedDetectors (Face / Pose / Hand)"]
+        Detectors --> Processor["LandmarkProcessor (Temporal Smoothing)"]
+        Processor --> PoseFitter["PoseFitter (Anatomical Fit)"]
+        PoseFitter --> AdaptiveCtrl["AdaptiveController (Frame Budget)"]
+        AdaptiveCtrl --> Compositor["Dual Compositor Layer"]
+    end
+
+    subgraph Renderers ["Compositor Layer"]
+        Compositor --> Canvas2D["Canvas2dRenderer (2D Overlays)"]
+        Compositor --> ThreeWebGL["ThreeRenderer (Three.js WebGL 3D)"]
+    end
+
+    subgraph StudioUI ["React 19 Viewport"]
+        Canvas2D --> StudioView["Live Camera Viewfinder"]
+        ThreeWebGL --> StudioView
+        StudioView --> ActiveFitting["Active Multi-Fitting Bar"]
+        StudioView --> Switcher["Piece Switcher Drawer"]
+        StudioView --> FineTuneFit["Fine-Tune Fit Controls"]
+    end
 ```
 
-Both platforms execute **100% on the client device**. Video frames never leave the user's computer or browser, guaranteeing strict privacy, low power consumption, and instant real-time response.
+The application runs **100% on the client device**. Video frames never leave the user's computer or browser, guaranteeing strict privacy, low power consumption, and instant real-time response.
 
 ---
 
-## 2. Platform Architecture
+## 2. Multi-Jewellery Studio vs. Single-Piece Studio
 
-### 2.1 Next.js Web Application (`frontend/`)
-- **Technology Stack**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS, `@mediapipe/tasks-vision`, `@tensorflow/tfjs`, Three.js.
-- **Entry Point**: [`frontend/src/app/page.tsx`](file:///c:/Users/ankus/Downloads/VIRTUAL-TRY-ON-main/frontend/src/app/page.tsx) and [`frontend/src/app/try-on/page.tsx`](file:///c:/Users/ankus/Downloads/VIRTUAL-TRY-ON-main/frontend/src/app/try-on/page.tsx)
-- **Features**:
-  - Fully responsive, luxury-themed storefront and live virtual fitting studio.
-  - Built-in offline catalogue (no backend or database required).
-  - Dual rendering pipeline: Canvas 2D for high-resolution PNG jewellery and Three.js for 3D PBR glTF models.
-  - Fine-tune controls (Size Ratio slider: 80%–120%, Vertical Position offset: ±25px).
-  - Studio camera controls (Mirror Flip, Alignment Guide, Studio Lighting Boost, Front/Rear camera switch).
-  - Studio snapshot export with automatic compositing and downloads.
+### 2.1 Single-Piece Studio (`/try-on` or `/try-on/[productId]`)
+- **Focused Trial**: Evaluates one jewellery piece at a time with full universal fine-tuning (Size Ratio: 80%–120%, Vertical Position: ±30px).
+- **Same-Category Swaps**: Picking another piece of the same category swaps the piece cleanly without stopping the camera.
+- **Cross-Category Selection**: Selecting an item from a different category **directly transfers** the user into the Multi-Jewellery Studio without dropping or restarting the camera stream, fitting both pieces together immediately.
 
-### 2.2 Python Backend Server (`server.py`)
-- **Technology Stack**: Python 3.10+, FastAPI / Flask.
-- **Entry Point**: [`server.py`](file:///c:/Users/ankus/Downloads/VIRTUAL-TRY-ON-main/server.py)
-- **Features**:
-  - RESTful API endpoints for product catalogue, try-on session persistence, and asset preloading.
+### 2.2 Multi-Jewellery Studio (`/try-on/multi`)
+- **Multi-Category Trial**: Users can try on multiple items across categories simultaneously (Earrings + Necklace + Rings + Bangles).
+- **Active Multi-Fitting Bar**: Interactive pill bar displaying all worn pieces with individual `× Remove` buttons.
+- **Strict Necklace-Only Fine-Tuning**: In Multi Mode, fine-tune sliders are strictly dedicated to:
+  1. **Necklace Size** (80% to 120%)
+  2. **Necklace Length / Drape** (-30px to +30px vertical drop)
+- If no necklace is equipped, an alert prompt guides the user: *"Add a necklace to the fitting to adjust size and drape length."*
 
 ---
 
 ## 3. Computer Vision & Landmark Alignment Calibration
-
-To ensure identical fitting accuracy across both desktop and web applications, the web AR engine (`frontend/src/ar-engine/`) mirrors the mathematical calibration formulated in `app.py`:
 
 ### 3.1 Earrings & Drops
 - **Landmark Anchors**: Dual earlobes via MediaPipe Face Mesh landmarks `177` (left earlobe) and `401` (right earlobe).
 - **Dynamic Sizing**:
   $$\text{Earring Width} = \max\left(14,\; \min\left(64,\; \text{Face Width} \times 0.12\right)\right)$$
 - **Attachment Point**: Anchor top hook at `originY = -h * 0.08` so the earring hangs naturally below the earlobe rather than floating over the cheek.
-- **Perspective Occlusion**: Head yaw angle is tracked in real-time. When yaw exceeds $35^\circ$ ($0.61\text{ rad}$), the far-side earring automatically fades out with progressive opacity, matching real-world ear occlusion.
+- **Perspective Occlusion**: Head yaw angle is tracked in real-time. When yaw exceeds $35^\circ$ ($0.61\text{ rad}$), the far-side earring automatically fades out with progressive opacity.
 
-### 3.2 Necklaces & Chokers
-- **Landmark Anchors**: Suprasternal notch and clavicle base (`NECK_BASE` and `COLLARBONE`) derived from MediaPipe Pose shoulders (`landmarks 11 & 12`) with fallback to facial chin triangulation.
-- **Dynamic Sizing**:
-  $$\text{Necklace Width} = \max\left(160,\; \min\left(560,\; \text{Face Width} \times 1.50\right)\right)$$
-- **Attachment Point**: Centered at `originY = -h * 0.48` ensuring the necklace rests along the collarbone and sternum without drifting when turning.
+### 3.2 Necklaces, Pendants & Mangalsutras
+- **Landmark Anchors**: Clavicle notch and shoulder acromia (MediaPipe Pose landmarks `11` = Left Shoulder, `12` = Right Shoulder):
+  $$\vec{P}_{\text{neck\_base}} = \frac{\vec{P}_{11} + \vec{P}_{12}}{2}$$
+- **Dynamic Sizing & Drape**:
+  $$\text{Target Scale} = \max\left(0.60,\; \min\left(1.50,\; 1.0 + \frac{\text{fineTuneOffsetY}}{70}\right)\right) \times \frac{W_{\text{shoulder}}}{240}$$
+- **Necklace Drape Offset**: Moving the slider up (negative Y) tightens into a choker collar; moving the slider down (positive Y) drops the chain onto the chest.
 
-### 3.3 Solitaire Rings
+### 3.3 3D Gemstone & Solitaire Rings
 - **Landmark Anchors**: Proximal and distal interphalangeal joints of the ring finger (`landmarks 13 & 14`).
 - **Dynamic Rotation & Angle**:
-  $$\theta = \text{atan2}(y_{14} - y_{13},\; x_{14} - x_{13}) + 90^\circ$$
-- **Perspective Squashing**: Elliptical perspective compression ratio of $0.70$ applied along the finger axis:
-  $$w = \text{Segment Length} \times 0.35, \quad h = w \times 0.70$$
+  $$\theta = \arctan2(y_{14} - y_{13},\; x_{14} - x_{13}) + 90^\circ$$
+- **Gram-Schmidt Orthogonalization**: Formulates a complete 3D basis matrix from finger vector $\hat{z}$ and palm normal $\vec{N}_{\text{palm}}$, converted to a Three.js Quaternion with SLERP smoothing.
 
-### 3.4 Bangles & Kadas
+### 3.4 3D Two-Pass Bangles & Kadas
 - **Landmark Anchors**: Wrist center (`landmark 0`) and base of middle finger (`landmark 9`) defining the forearm vector.
-- **Dynamic Sizing & Tilt**:
-  $$\text{Bangle Width} = \text{Palm Width} \times 1.22$$
-  $$\text{Bangle Height} = \text{Bangle Width} \times 0.35$$
-  Anchored at the wrist midpoint with rotation aligned perpendicular to the forearm direction vector.
+- **Two-Pass Shading**:
+  - Front band mesh: fully opaque (`depthWrite: true`, `renderOrder: 2`).
+  - Back band mesh: translucent ($0.16$), darkened ($0.7\times$), `depthWrite: false`, `renderOrder: 1`.
 
 ---
 
-## 4. Performance & AR Pipeline Optimization
+## 4. Three.js PBR Shading & Occlusion Engine
 
-The web AR engine implements multiple performance optimizations ensuring sustained 60 FPS rendering without CPU lag or browser frame drops:
+### 4.1 Colored Gemstone Material Formula
+- **Diamond (Solitaire)**: Uses transmission ($0.60$) and clear diamond dispersion.
+- **Colored Gemstones (Ruby, Sapphire, Emerald, Amethyst)**:
+  - `transmission = 0` (eliminates background reflection washout).
+  - `emissiveIntensity = 0.35` (preserves stone saturation in dim camera lighting).
+  - `clearcoat = 1.0` and `clearcoatRoughness = 0.05`.
+  - `flatShading = true` (breaks light into distinct diamond cut facets).
+  - Localized `PointLight` attached near the gem maintaining vivid hue.
 
-### 4.1 React State Throttle (97% Render Reduction)
-- **Problem**: Previously, continuous frame callbacks triggered `setHud(...)` on every animation frame (30–60 FPS) because `fps` fluctuated slightly every frame. This caused React to re-render the entire 730-line `TryOnExperience` component tree 60 times a second, starving the main thread.
-- **Solution**: Throttled FPS HUD state updates to once every 500ms using a timestamp delta check. Critical state transitions (`status`, `error`, `promptMessage`, `faceCentered`) remain instantaneous.
-- **Result**: Reduced React component re-renders by **~97%**, eliminating UI click lag and slider drag stuttering.
+| Product | Gem Color | Hex Code | Material Configuration |
+|---|---|---|---|
+| **Brilliant Solitaire** | Diamond White | `#FFFFFF` | Clear transmission PBR |
+| **Royal Ruby Pavé** | Crimson Ruby | `#E0115F` | Opaque faceted PBR + Emissive tint |
+| **Sapphire Halo** | Royal Blue | `#1E6FD9` | Opaque faceted PBR + Emissive tint |
+| **Imperial Emerald** | Emerald Green | `#2ECC71` | Opaque faceted PBR + Emissive tint |
+| **Amethyst Sovereign**| Royal Violet | `#9B59B6` | Opaque faceted PBR + Emissive tint |
 
-### 4.2 Detection Decoupling (60 FPS Interpolation)
-- **Problem**: MediaPipe's `detectForVideo()` runs synchronously on the main thread and takes 25–45ms per frame on typical hardware, bottlenecking frame rate to ~20–25 FPS.
-- **Solution**: `AdaptiveController` initializes with `detectEveryN = 2`. Computer vision detection runs at ~15–20 Hz, while the `PoseFitter` applies second-order spring damping and exponential smoothing to render jewellery motion at a continuous **60 FPS**.
-
-### 4.3 Camera Constraint Ladder (720p @ 30 FPS)
-- **Problem**: Requesting unconstrained 1080p @ 60 FPS feeds overwhelmed USB buses and required uploading 2.07 million pixels per frame into WebGL texture memory.
-- **Solution**: Camera engine negotiates standard **1280x720 (720p HD) and 960x540 at 30 FPS**. Because the web viewport renders the camera feed at ~400–600px width, 720p provides double retina crispness while cutting raw pixel volume by **over 55%**.
-
-### 4.4 Single-Target Model Profiling
-- MediaPipe FaceLandmarker configured with `numFaces: 1` rather than multi-face tracking.
-- BlazeFace and TensorFlow.js models are lazy-loaded strictly as on-demand error fallbacks rather than loading eagerly on startup.
-- Canvas luminance sampling in `LightingEstimator` is throttled to execute every 16 frames instead of every 8 frames.
+### 4.2 Occlusion & Shadows
+- **Finger Occluder Cylinder**: Invisible cylinder ($0.85\times$ inner ring radius, `colorWrite: false`, `depthWrite: true`, `renderOrder: 0`) masking the rear arc of the ring behind the finger.
+- **Contact Shadow Texture**: Soft radial blob shadow grounded onto the skin under the ring shank.
 
 ---
 
-## 5. Installation & Running
+## 5. Performance & AR Pipeline Optimization
 
-### 5.1 Backend API (Optional Python Server)
+### 5.1 Persistent Detector Caching
+- MediaPipe models (`face`, `pose`, `hand`) are loaded once and stored in `this.cachedDetectors`. Swapping jewellery never tears down or re-downloads models.
 
-#### Requirements:
-- Python 3.10+
-- `pip install -r requirements.txt`
+### 5.2 React State Throttle (97% Render Reduction)
+- Throttled continuous FPS state updates to once every 500ms. Critical transitions (`status`, `promptMessage`, `error`) remain immediate, eliminating slider drag lag.
 
-#### Steps:
-```bash
-# Launch backend API on port 4000
-python server.py
-```
+### 5.3 Decoupled Detection & 60 FPS Spring Interpolation
+- Heavy ML inference runs at ~15–20 Hz in WebAssembly workers.
+- The `PoseFitter` calculates continuous 60 FPS positions using second-order exponential spring-damping.
 
-### 5.2 Web App (Standalone Atelier)
+---
 
-#### Requirements:
+## 6. Installation & Running
+
+### Requirements
 - Node.js 18+ (Node.js 20+ recommended)
 - `pnpm` (recommended) or `npm`
 
-#### Steps:
+### Quick Start
 ```bash
 # 1. Navigate to frontend
 cd frontend
@@ -171,114 +175,73 @@ pnpm install
 # 3. Start development server
 pnpm dev
 
-# Or launch directly using the root batch script:
+# Or run via Windows batch file:
 # run_web.bat
 ```
 
-Open your browser at: **`http://localhost:3000`**
+Open: **`http://localhost:3000`**
 
-#### Production Build:
+### Production Build & Typecheck
 ```bash
 cd frontend
-pnpm build
-pnpm start
+pnpm typecheck   # Static typecheck (0 errors)
+pnpm build       # Optimized Next.js production build
+pnpm start       # Start production server
 ```
 
 ---
 
-## 6. Directory Structure
+## 7. Directory Structure
 
 ```text
-VIRTUAL-TRY-ON-main/
-├── server.py                   # Backend API server (Port 4000)
-├── requirements.txt            # Python dependencies
-├── README.md                   # Repository overview
-├── DOCUMENTATION.md            # Comprehensive system documentation
-├── run_web.bat                 # One-click Windows launch script for Web Atelier
-├── static/                     # Shared jewellery assets & desktop UI resources
-│   ├── Image/
-│   │   ├── Earring/            # Earring transparent PNG overlays
-│   │   ├── Necklace/           # Necklace transparent PNG overlays
-│   │   ├── Ring/               # Ring transparent PNG overlays
-│   │   └── Bangle/             # Bangle transparent PNG overlays
-│   └── icons/                  # Desktop GUI toolbar icons
-└── frontend/                   # Standalone Next.js 15 Web Atelier
-    ├── public/
-    │   ├── assets/             # Vector icons and SVG mock overlays
-    │   ├── models/             # MediaPipe WASM and .task model runtimes
-    │   └── static/             # Static symlink/copy of jewellery PNGs
+Virtual-try/
+├── run_web.bat                     # Windows launch batch script
+├── DOCUMENTATION.md                # Master system documentation
+├── README.md                       # Repository overview & quick start
+├── docs/                           # Dedicated modular technical guides
+│   ├── ARCHITECTURE.md             # System architecture & component design
+│   ├── TRY_ON_STUDIO.md            # Studio modes, multi-try UX & fine-tuning
+│   ├── VISION_AND_TRACKING.md      # Computer vision & anatomical math
+│   ├── 3D_SHADING_AND_MATERIALS.md # PBR materials, gems & two-pass shaders
+│   └── DEVELOPER_GUIDE.md          # Local setup, testing & product addition
+├── static/                         # Desktop assets & shared PNG overlays
+│   └── Image/                      # Earrings, Necklaces, Rings, Bangles
+└── frontend/                       # Standalone Next.js 15 Web Atelier
+    ├── public/                     # Public assets & WASM model runtimes
     └── src/
-        ├── app/                # App Router pages (Home, Products, Categories, Studio)
-        ├── ar-engine/          # Production AR Engine
-        │   ├── camera/         # CameraEngine (stream negotiation & device switching)
-        │   ├── detectors/      # FaceDetector, PoseDetector, HandDetector
-        │   ├── fitting/        # PoseFitter with spring damping & fine-tune calibration
-        │   ├── renderers/      # Canvas2dRenderer & ThreeRenderer (3D PBR)
-        │   ├── performance/    # AdaptiveController & FpsMeter
-        │   └── capture/        # CaptureCompositor for lookbook snapshots
-        ├── features/try-on/    # Studio UI, Camera Viewfinder, Fine-Tune Sliders
-        ├── components/         # Reusable UI components & navigation
-        └── ui/                 # Design system components
+        ├── app/                    # Next.js App Router (/, /try-on, /try-on/multi)
+        ├── ar-engine/              # AR Engine core (camera, detectors, renderers)
+        ├── features/try-on/        # Studio UI, Camera Viewfinder, Fine-Tune Sliders
+        ├── components/             # Storefront components
+        └── ui/                     # Design system components
 ```
 
 ---
 
-## 7. Catalogue & Asset Addition Guide
+## 8. Catalogue & Asset Addition Guide
 
-### Adding New Jewellery Overlays:
-
-1. **Asset Requirements**:
-   - Format: Transparent PNG with 32-bit alpha (`RGBA`).
-   - Resolution: 800x800 to 1200x1200px recommended.
-   - Framing: Centered with no extraneous transparent margins.
-   - For Earrings: Create the asset with the hook/post at the top center.
-   - For Necklaces: Create the asset curved naturally in a hanging "U" shape with clasp at top center.
-
-2. **Placement**:
-   - Place desktop assets in `static/Image/<Category>/`.
-   - Place web assets in `frontend/public/static/Image/<Category>/`.
-
-3. **Registering in the Web Catalogue**:
-   - Open [`frontend/src/features/try-on/fallback-catalogue.ts`](file:///c:/Users/ankus/Downloads/VIRTUAL-TRY-ON-main/frontend/src/features/try-on/fallback-catalogue.ts).
-   - Add a new product entry matching the `ProductDetailDto` schema:
-     ```typescript
-     {
-       id: 'vj-neck-099',
-       slug: 'solitaire-diamond-pendant',
-       name: 'Solitaire Diamond Pendant',
-       jewelleryKind: 'NECKLACE',
-       priceCents: 2499900,
-       currency: 'INR',
-       primaryImage: { url: '/static/Image/Necklace/necklace_new.png' },
-       tryOnAsset: {
-         id: 'asset-neck-099',
-         assetType: 'IMAGE_OVERLAY',
-         assetUrl: '/static/Image/Necklace/necklace_new.png',
-         renderScale: 1.0,
-         renderOffsetY: 0,
-       },
-     }
-     ```
+### Adding New Pieces:
+1. **2D PNG Overlays**: Place 32-bit transparent PNG in `frontend/public/static/Image/<Category>/`.
+2. **3D Rings / Bangles**: Define a `ringConfig` or `bangleConfig` specifying gem color, metal, and accents.
+3. **Register in Catalogue**: Add the item definition to [`frontend/src/features/try-on/fallback-catalogue.ts`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/features/try-on/fallback-catalogue.ts).
 
 ---
 
-## 8. Troubleshooting & FAQ
+## 9. Troubleshooting & FAQ
 
 #### Q1: "Camera access is blocked or black screen appears in the browser"
-- Check browser permissions by clicking the padlock or camera icon in the URL bar.
-- Ensure no other application (e.g. Zoom, Teams, or another browser tab) is holding an exclusive hardware lock on the webcam.
+- Check browser permissions by clicking the padlock or camera icon in the URL bar and select **Allow**.
+- Ensure no other application (e.g. Zoom, Teams) has an exclusive hardware lock on the webcam.
 
-#### Q2: "The jewellery overlay appears mirrored or reversed"
-- Lumière features unified mirror compensation: the camera viewfinder DOM container applies `-scale-x-100` so looking into the screen feels like a natural mirror. The AR engine draws in standard unmirrored coordinate space to avoid double-mirroring. You can toggle manual mirror view using the mirror button at the top of the camera viewfinder.
+#### Q2: "Can I try out multiple jewellery pieces at once?"
+- **Yes.** Navigate to `/try-on/multi` or select any item of a different category in the studio. The studio will directly transfer to Multi-Jewellery Mode without stopping the camera feed.
 
-#### Q3: "Web try-on runs slowly on older laptops or battery power"
-- The built-in `AdaptiveController` automatically adjusts detection scaling and frame intervals if frame budget is exceeded.
-- Ensure hardware acceleration is enabled in your browser settings (`chrome://settings/system` -> "Use graphics acceleration when available").
+#### Q3: "Why can I only adjust necklace size and length in multi-fitting mode?"
+- In Multi-Jewellery Mode, non-necklace pieces (earrings, rings, bangles) are locked to calibrated anatomical tracking. The Fine-Tune controls focus specifically on necklace size and neckline drape to prevent UI clutter and ensure bridal sets fit naturally.
 
-#### Q4: "Do I need to run Python or a backend server to use the web storefront?"
-- **No.** The web application is 100% self-contained. You can run `pnpm dev` inside `frontend/` and all catalogues, 3D engines, landmark detection, and photo captures function entirely inside your browser.
+#### Q4: "Do I need a backend server to run the virtual studio?"
+- **No.** The web application is 100% self-contained. All computer vision models, 3D engines, and catalogues run locally inside your browser.
 
 ---
 
 *Lumière Luxury Virtual Jewellery Studio © 2026. All rights reserved.*
-

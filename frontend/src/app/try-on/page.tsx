@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@vj/api-client';
 import { Button, PageLoader, EmptyState } from '@vj/ui';
-import { ArrowLeft, Sparkles } from 'lucide-react';
+import { ArrowLeft, Sparkles, Layers } from 'lucide-react';
 import type { JewelleryKind } from '@vj/shared';
 import { api } from '@/lib/api';
 import { TryOnExperience } from '@/features/try-on/TryOnExperience';
@@ -132,9 +132,21 @@ function TryOnStudioContent() {
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground hidden sm:block">
-          Select any piece to preview live on your camera
-        </p>
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            asChild
+            className="rounded-full text-xs h-8 px-3 border-primary/30 text-primary hover:bg-primary/10 shadow-xs"
+          >
+            <Link href="/try-on/multi">
+              <Layers className="h-3.5 w-3.5 mr-1.5" /> Multi-Jewellery Mode
+            </Link>
+          </Button>
+          <p className="text-xs text-muted-foreground hidden lg:block">
+            Select any piece to preview live on your camera
+          </p>
+        </div>
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">

@@ -128,9 +128,8 @@ export class ThreeRenderer {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-    // Use NoToneMapping so WebGL transparent alpha channel (RGBA 0,0,0,0) is preserved
-    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
 
     // ── Camera ────────────────────────────────────────────────────────────
     this.camera = new THREE.OrthographicCamera(0, 1, 0, 1, 0.1, 2000);
@@ -306,7 +305,7 @@ export class ThreeRenderer {
 
   /** Map mean luminance (0 dark … 1 bright) onto tone-mapping exposure. */
   setExposure(luminance: number): void {
-    const exposure = Math.max(0.75, Math.min(1.65, 1.15 + (0.45 - luminance) * 0.9));
+    const exposure = Math.max(0.75, Math.min(1.4, 1.05 + (0.45 - luminance) * 0.6));
     this.renderer.toneMappingExposure = exposure;
   }
 
@@ -420,14 +419,7 @@ export class ThreeRenderer {
       this.bangleRef.current = null;
     }
 
-    // 2. Clear old ring if any
-    if (this.ringRef.current) {
-      this.root.remove(this.ringRef.current);
-      this._disposeGroup(this.ringRef.current, true);
-      this.ringRef.current = null;
-    }
-
-    // 3. Build the new two-pass bangle (band + studs)
+    // 2. Build the new two-pass bangle (band + studs)
     this.instanceOwnsGeometry = true;
     const isDebugMode =
       typeof window !== 'undefined' &&
@@ -1014,7 +1006,42 @@ export class ThreeRenderer {
     return this.occluder;
   }
 
-  clearJewellery(): void {
+  clearRing(): void {
+    if (this.ringRef.current) {
+      this.root.remove(this.ringRef.current);
+      this._disposeGroup(this.ringRef.current, true);
+      this.ringRef.current = null;
+    }
+    this.fingerOccluder.visible = false;
+    this.hasInitialRingPose = false;
+    this.ringTrackingDropFrames = 0;
+  }
+
+  clearBangle(): void {
+    if (this.bangleRef.current) {
+      this.root.remove(this.bangleRef.current.group);
+      this._disposeBangle(this.bangleRef.current);
+      this.bangleRef.current = null;
+    }
+    this.hasInitialBanglePose = false;
+    this.bangleTrackingDropFrames = 0;
+    this.bangleOpacity = 1.0;
+    this.targetBangleOpacity = 1.0;
+  }
+
+  clearJewellery(kind?: string): void {
+    const k = (kind ?? '').toUpperCase();
+    if (k.includes('RING') && !k.includes('NOSE')) {
+      this.clearRing();
+      return;
+    }
+    if (k.includes('BANGLE') || k.includes('BRACELET')) {
+      this.clearBangle();
+      return;
+    }
+
+    this.clearRing();
+    this.clearBangle();
     this._clearGroups();
     this.ready = false;
     this.currentAssetUrl = null;
@@ -1022,17 +1049,6 @@ export class ThreeRenderer {
     this.secondary.visible = false;
     this.occluder.visible = false;
     this.fingerOccluder.visible = false;
-    this.hasInitialRingPose = false;
-    this.ringTrackingDropFrames = 0;
-    this.hasInitialBanglePose = false;
-    this.bangleTrackingDropFrames = 0;
-    this.bangleOpacity = 1.0;
-    this.targetBangleOpacity = 1.0;
-    if (this.bangleRef.current) {
-      this.root.remove(this.bangleRef.current.group);
-      this._disposeBangle(this.bangleRef.current);
-      this.bangleRef.current = null;
-    }
     try {
       this.renderer.clear();
     } catch {
@@ -1041,7 +1057,13 @@ export class ThreeRenderer {
   }
 
   hasActiveMesh(): boolean {
-    return this.ready && (this.root.children.length > 0 || this.secondary.children.length > 0);
+    return (
+      this.ready &&
+      (this.root.children.length > 0 ||
+        this.secondary.children.length > 0 ||
+        this.ringRef.current !== null ||
+        this.bangleRef.current !== null)
+    );
   }
 
   getActiveUrl(): string | null {
@@ -1208,15 +1230,20 @@ export class ThreeRenderer {
   }
 
   private _setGroupOpacity(group: THREE.Group, opacity: number): void {
+    const isTrans = opacity < 0.999;
     group.traverse((node) => {
       if ((node as THREE.Mesh).isMesh) {
         const mesh = node as THREE.Mesh;
         const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        mats.forEach((m: THREE.Material) => {
-          m.transparent = opacity < 1;
-          m.opacity = opacity;
-          m.needsUpdate = true;
-        });
+        for (const m of mats) {
+          if (Math.abs(m.opacity - opacity) > 0.005) {
+            m.opacity = opacity;
+            if (m.transparent !== isTrans) {
+              m.transparent = isTrans;
+              m.needsUpdate = true;
+            }
+          }
+        }
       }
     });
   }
@@ -1634,17 +1661,17 @@ export function buildRing(
         : {
           color: new THREE.Color(accentColor),
           emissive: new THREE.Color(accentColor),
-          emissiveIntensity: 0.45,
-          metalness: 0.0,
-          roughness: 0.05,
+          emissiveIntensity: 0.65,
+          metalness: 0.05,
+          roughness: 0.1,
           transmission: 0,
           transparent: false,
           opacity: 1.0,
           ior: 2.2,
-          clearcoat: 0.5,
-          clearcoatRoughness: 0.05,
+          clearcoat: 0.25,
+          clearcoatRoughness: 0.08,
           envMap: envTexture ?? null,
-          envMapIntensity: 0.3,
+          envMapIntensity: 0.06,
           flatShading: true,
         },
     );
@@ -1701,24 +1728,24 @@ export function buildRing(
       : {
         color: new THREE.Color(gemColor),
         emissive: new THREE.Color(gemColor),
-        emissiveIntensity: 0.45,
-        metalness: 0.0,
-        roughness: 0.05,
+        emissiveIntensity: 0.65,
+        metalness: 0.05,
+        roughness: 0.1,
         transmission: 0,
         transparent: false,
         opacity: 1.0,
         ior: 2.2,
-        clearcoat: 0.5,
-        clearcoatRoughness: 0.05,
+        clearcoat: 0.25,
+        clearcoatRoughness: 0.08,
         envMap: envTexture ?? null,
-        envMapIntensity: 0.3,
+        envMapIntensity: 0.06,
         flatShading: true,
       },
   );
 
-  // Small PointLight (same color as the gem, intensity ~0.4) near the gem to keep tint in dim light
-  const gemLight = new THREE.PointLight(new THREE.Color(gemColor), 0.6, 0);
-  gemLight.position.set(0, 1.25 * s, 0.25);
+  // Small PointLight (same color as the gem, intensity ~0.8) near the gem to keep tint in all lighting
+  const gemLight = new THREE.PointLight(new THREE.Color(gemColor), 0.8, 15, 1);
+  gemLight.position.set(0, 1.35 * s, 0.4);
   gemLight.name = 'gem_tint_light';
   gemGroup.add(gemLight);
 
@@ -1876,17 +1903,17 @@ export function buildRing(
         : {
           color: new THREE.Color(haloColor),
           emissive: new THREE.Color(haloColor),
-          emissiveIntensity: 0.45,
-          metalness: 0.0,
-          roughness: 0.05,
+          emissiveIntensity: 0.65,
+          metalness: 0.05,
+          roughness: 0.1,
           transmission: 0,
           transparent: false,
           opacity: 1.0,
           ior: 2.2,
-          clearcoat: 0.5,
-          clearcoatRoughness: 0.05,
+          clearcoat: 0.25,
+          clearcoatRoughness: 0.08,
           envMap: envTexture ?? null,
-          envMapIntensity: 0.3,
+          envMapIntensity: 0.06,
           flatShading: true,
         },
     );

@@ -104,6 +104,17 @@ export class ArEngine {
   private canvasRenderer: Canvas2dRenderer | null = null;
   private threeRenderer:  ThreeRenderer    | null = null;
 
+  // Cached detectors per model type to avoid tearing down models between piece swaps
+  private readonly cachedDetectors = new Map<'face' | 'hand' | 'pose', ModelAdapter>();
+  private readonly lastLandmarksMap = new Map<'face' | 'hand' | 'pose', LandmarkResult | null>();
+
+  // Multi-jewellery active items map (kind -> { config, fitter, lastPose })
+  private readonly activeJewellery = new Map<JewelleryKind, {
+    config: JewelleryConfig;
+    fitter: PoseFitter;
+    lastPose?: PoseFit | null;
+  }>();
+
   private host:   ArEngineHost  | null = null;
   private config: ArEngineConfig | null = null;
 
@@ -122,6 +133,10 @@ export class ArEngine {
   private readonly bodyModel = new BodyModelEstimator();
   private fineTuneScale = 1.0;
   private fineTuneOffsetY = 0;
+
+  // Multi-jewellery necklace fine-tune controls (necklace size and drape length)
+  private necklaceFineTuneScale = 1.0;
+  private necklaceFineTuneOffsetY = 0;
 
   private status: TrackingStatus = 'INITIALIZING';
   private listeners = new Set<Listener>();
@@ -184,10 +199,9 @@ export class ArEngine {
       }
     });
 
-    // Detector (lazy-loaded based on category)
+    // Detector (cached & lazy-loaded based on category)
     const registration = AnchorRegistry.get(config.jewelleryKind);
-    this.detector = this._createDetector(registration.detector);
-    await this.detector.load();
+    this.detector = await this.getOrLoadDetector(registration.detector);
 
     // Tracking engine with status callback
     this.tracker.reset();
@@ -205,6 +219,12 @@ export class ArEngine {
       jewelleryKind: config.jewelleryKind,
     });
     this.fitter.setFineTune(this.fineTuneScale, this.fineTuneOffsetY);
+
+    this.activeJewellery.set(config.jewelleryKind, {
+      config,
+      fitter: this.fitter,
+      lastPose: null,
+    });
 
     // Renderers
     const ctx = host.overlayCanvas.getContext('2d');
@@ -243,22 +263,29 @@ export class ArEngine {
         fingerIndex:   config.fingerIndex,
         jewelleryKind: config.jewelleryKind,
       });
-      this.fitter.setFineTune(this.fineTuneScale, this.fineTuneOffsetY);
+      if (
+        config.jewelleryKind === 'NECKLACE' ||
+        config.jewelleryKind === 'PENDANT' ||
+        config.jewelleryKind === 'MANGALSUTRA'
+      ) {
+        this.fitter.setFineTune(this.necklaceFineTuneScale, this.necklaceFineTuneOffsetY);
+      } else {
+        this.fitter.setFineTune(this.fineTuneScale, this.fineTuneOffsetY);
+      }
     }
 
-    // If kind changed, swap detector (lazy load only what is needed).
+    // Reuse or load detector from cache without teardown
     const registration = AnchorRegistry.get(config.jewelleryKind);
-    const needsNewDetector = !this.detector || this.detector.name !== registration.detector;
+    this.detector = await this.getOrLoadDetector(registration.detector);
+
+    this.activeJewellery.clear();
+    this.activeJewellery.set(config.jewelleryKind, {
+      config,
+      fitter: this.fitter!,
+      lastPose: null,
+    });
+
     const kindChanged = this.config?.jewelleryKind !== config.jewelleryKind;
-
-    if (needsNewDetector) {
-      this.detector?.dispose();
-      this.detector = this._createDetector(registration.detector);
-      await this.detector.load();
-      this.processor.reset();
-      this.tracker.reset();
-    }
-
     if (kindChanged) {
       this.lastPose = null;
       this.lastLandmarks = null;
@@ -272,6 +299,82 @@ export class ArEngine {
     this.config = { ...(this.config ?? {}), ...config };
 
     this.emit({ status: this.status, fps: this.fpsMeter.getFps(), assetReady: true });
+  }
+
+  // ─── Multi-Jewellery Atelier Methods ──────────────────────────────────────
+
+  async addOrUpdateJewellery(config: JewelleryConfig): Promise<void> {
+    if (!this.host || !this.canvasRenderer) return;
+
+    const registration = AnchorRegistry.get(config.jewelleryKind);
+    await this.getOrLoadDetector(registration.detector);
+
+    const profile = AnchorRegistry.mergeProfile(config.jewelleryKind, config.anchorProfile);
+    const fitter = new PoseFitter(profile, {
+      scale: config.defaultScale ?? 1,
+      rotationZ: ((config.defaultRotationZ ?? 0) * Math.PI) / 180,
+      fingerIndex: config.fingerIndex,
+      jewelleryKind: config.jewelleryKind,
+    });
+
+    if (
+      config.jewelleryKind === 'NECKLACE' ||
+      config.jewelleryKind === 'PENDANT' ||
+      config.jewelleryKind === 'MANGALSUTRA'
+    ) {
+      fitter.setFineTune(this.necklaceFineTuneScale, this.necklaceFineTuneOffsetY);
+    } else {
+      fitter.setFineTune(this.fineTuneScale, this.fineTuneOffsetY);
+    }
+
+    this.activeJewellery.set(config.jewelleryKind, {
+      config,
+      fitter,
+      lastPose: null,
+    });
+
+    // Load asset specifically for kind without clearing other categories
+    await this._loadAssetOnce(config, true);
+
+    this.config = { ...(this.config ?? {}), ...config };
+    this.emit({ status: this.status, fps: this.fpsMeter.getFps(), assetReady: true });
+  }
+
+  removeJewellery(kind: JewelleryKind): void {
+    if (!this.activeJewellery.has(kind)) return;
+
+    const entry = this.activeJewellery.get(kind);
+    const use3d = this.is3DAsset(entry?.config);
+
+    if (use3d && this.threeRenderer) {
+      this.threeRenderer.clearJewellery(kind);
+    } else if (this.canvasRenderer) {
+      this.canvasRenderer.clearJewellery(kind);
+    }
+
+    this.activeJewellery.delete(kind);
+
+    if (this.activeJewellery.size === 0) {
+      this.lastPose = null;
+    }
+
+    this.emit({ status: this.status, fps: this.fpsMeter.getFps(), assetReady: true });
+  }
+
+  clearAllJewellery(): void {
+    this.activeJewellery.clear();
+    this.threeRenderer?.clearJewellery();
+    this.canvasRenderer?.clearJewellery();
+    this.lastPose = null;
+    this.emit({ status: this.status, fps: this.fpsMeter.getFps(), assetReady: true });
+  }
+
+  getActiveJewellery(): Map<JewelleryKind, {
+    config: JewelleryConfig;
+    fitter: PoseFitter;
+    lastPose?: PoseFit | null;
+  }> {
+    return this.activeJewellery;
   }
 
   // ─── Asset preloading ──────────────────────────────────────────────────────
@@ -337,6 +440,31 @@ export class ArEngine {
     this.fineTuneScale = scaleMultiplier;
     this.fineTuneOffsetY = offsetY;
     this.fitter?.setFineTune(scaleMultiplier, offsetY);
+    for (const entry of this.activeJewellery.values()) {
+      entry.fitter.setFineTune(scaleMultiplier, offsetY);
+    }
+  }
+
+  setNecklaceFineTune(scaleMultiplier = 1.0, lengthOffsetY = 0): void {
+    this.necklaceFineTuneScale = scaleMultiplier;
+    this.necklaceFineTuneOffsetY = lengthOffsetY;
+    for (const [kind, entry] of this.activeJewellery) {
+      if (kind === 'NECKLACE' || kind === 'PENDANT' || kind === 'MANGALSUTRA') {
+        entry.fitter.setFineTune(scaleMultiplier, lengthOffsetY);
+      }
+    }
+    if (
+      this.fitter &&
+      (this.config?.jewelleryKind === 'NECKLACE' ||
+        this.config?.jewelleryKind === 'PENDANT' ||
+        this.config?.jewelleryKind === 'MANGALSUTRA')
+    ) {
+      this.fitter.setFineTune(scaleMultiplier, lengthOffsetY);
+    }
+  }
+
+  getNecklaceFineTune(): { scale: number; lengthOffsetY: number } {
+    return { scale: this.necklaceFineTuneScale, lengthOffsetY: this.necklaceFineTuneOffsetY };
   }
 
   getBodyModel(): BodyModelMeasurements {
@@ -415,6 +543,16 @@ export class ArEngine {
     this.raf = 0;
     this.lastRenderTier = null;
     if (this.recoverTimer) clearTimeout(this.recoverTimer);
+    for (const det of this.cachedDetectors.values()) {
+      try {
+        det.dispose();
+      } catch {
+        // ignore
+      }
+    }
+    this.cachedDetectors.clear();
+    this.lastLandmarksMap.clear();
+    this.activeJewellery.clear();
     this.detector?.dispose();
     this.threeRenderer?.dispose();
     this.canvasRenderer?.dispose();
@@ -487,71 +625,141 @@ export class ArEngine {
           void this.runDetection();
         }
 
-        const pose = this.fitter.fit(this.lastLandmarks);
-        this.lastPose = pose;
-        this.status   = this.tracker.update(pose);
-
-        if (this.status === 'TRACKING') {
-          this.recoverAttempts = Math.max(0, this.recoverAttempts - 1);
-        }
-
         const videoW = video.videoWidth || this.host.overlayCanvas.width;
         const videoH = video.videoHeight || this.host.overlayCanvas.height;
         const canvasW = this.host.overlayCanvas.width;
         const canvasH = this.host.overlayCanvas.height;
 
-        const renderPose = mapPoseToCanvas(pose, {
-          videoWidth: videoW,
-          videoHeight: videoH,
-          canvasWidth: canvasW,
-          canvasHeight: canvasH,
-          isMirrored: false, // The parent DOM wrapper (camera-mirror-wrapper) already applies CSS -scale-x-100 to mirror both video and canvas on screen.
-          fit: 'cover',
-        });
+        if (this.activeJewellery.size > 0) {
+          let anyTracking = false;
+          for (const [kind, entry] of this.activeJewellery) {
+            const reg = AnchorRegistry.get(kind);
+            const landmarks =
+              this.lastLandmarksMap.get(reg.detector) ??
+              (this.detector?.name === reg.detector ? this.lastLandmarks : null);
+            const pose = entry.fitter.fit(landmarks);
+            entry.lastPose = pose;
+            this.lastPose = pose;
 
-        if (this.status !== 'LOST' && renderPose.visible) {
-          const is3d = this.is3DAsset(this.config);
-          const kind = this.config?.jewelleryKind;
-          if (is3d && this.threeRenderer) {
-            this.threeRenderer.render(renderPose, kind);
-          } else if (!is3d && this.canvasRenderer) {
-            // Sort by depth (z) so far earring renders first and near earring renders in front
-            const isDualEarring =
-              (kind?.toUpperCase().includes('EARRING') ?? false) ||
-              (this.config?.assetUrl?.includes('earring') ?? false);
-            if (isDualEarring && renderPose.secondaryPosition) {
-              const rz = renderPose.position.z;
-              const sz = renderPose.secondaryPosition.z;
-              let primaryIsFar = false;
-              if (rz !== undefined && sz !== undefined && Math.abs(rz - sz) > 0.5) {
-                primaryIsFar = rz > sz; // in MediaPipe, larger z is farther
-              } else if (renderPose.yaw !== undefined) {
-                primaryIsFar = renderPose.yaw > 0
-                  ? renderPose.position.x > renderPose.secondaryPosition.x
-                  : renderPose.position.x < renderPose.secondaryPosition.x;
+            const itemStatus = this.tracker.update(pose);
+            if (itemStatus === 'TRACKING') {
+              anyTracking = true;
+            }
+
+            const renderPose = mapPoseToCanvas(pose, {
+              videoWidth: videoW,
+              videoHeight: videoH,
+              canvasWidth: canvasW,
+              canvasHeight: canvasH,
+              isMirrored: false,
+              fit: 'cover',
+            });
+
+            if (renderPose.visible && itemStatus !== 'LOST') {
+              const is3d = this.is3DAsset(entry.config);
+              if (is3d && this.threeRenderer) {
+                this.threeRenderer.render(renderPose, kind);
+              } else if (!is3d && this.canvasRenderer) {
+                const isDualEarring =
+                  kind.toUpperCase().includes('EARRING') ||
+                  (entry.config.assetUrl?.includes('earring') ?? false);
+                if (isDualEarring && renderPose.secondaryPosition) {
+                  const rz = renderPose.position.z;
+                  const sz = renderPose.secondaryPosition.z;
+                  let primaryIsFar = false;
+                  if (rz !== undefined && sz !== undefined && Math.abs(rz - sz) > 0.5) {
+                    primaryIsFar = rz > sz;
+                  } else if (renderPose.yaw !== undefined) {
+                    primaryIsFar =
+                      renderPose.yaw > 0
+                        ? renderPose.position.x > renderPose.secondaryPosition.x
+                        : renderPose.position.x < renderPose.secondaryPosition.x;
+                  }
+                  if (primaryIsFar) {
+                    this.canvasRenderer.drawJewellery(renderPose, false, kind, kind);
+                    this.canvasRenderer.drawJewellery(renderPose, true, kind, kind);
+                  } else {
+                    this.canvasRenderer.drawJewellery(renderPose, true, kind, kind);
+                    this.canvasRenderer.drawJewellery(renderPose, false, kind, kind);
+                  }
+                } else {
+                  this.canvasRenderer.drawJewellery(renderPose, false, kind, kind);
+                }
               }
-              if (primaryIsFar) {
-                this.canvasRenderer.drawJewellery(renderPose, false, kind);
-                this.canvasRenderer.drawJewellery(renderPose, true, kind);
-              } else {
-                this.canvasRenderer.drawJewellery(renderPose, true, kind);
-                this.canvasRenderer.drawJewellery(renderPose, false, kind);
-              }
-            } else {
-              this.canvasRenderer.drawJewellery(renderPose, false, kind);
+            } else if (this.is3DAsset(entry.config) && this.threeRenderer) {
+              this.threeRenderer.render(
+                { ...renderPose, visible: renderPose.visible && itemStatus !== 'LOST' },
+                kind,
+              );
             }
           }
-        } else if (this.is3DAsset(this.config) && this.threeRenderer) {
-          this.threeRenderer.render(
-            { ...renderPose, visible: renderPose.visible && this.status !== 'LOST' },
-            this.config?.jewelleryKind,
-          );
+
+          if (anyTracking) {
+            this.status = 'TRACKING';
+            this.recoverAttempts = Math.max(0, this.recoverAttempts - 1);
+          }
+        } else {
+          const pose = this.fitter.fit(this.lastLandmarks);
+          this.lastPose = pose;
+          this.status   = this.tracker.update(pose);
+
+          if (this.status === 'TRACKING') {
+            this.recoverAttempts = Math.max(0, this.recoverAttempts - 1);
+          }
+
+          const renderPose = mapPoseToCanvas(pose, {
+            videoWidth: videoW,
+            videoHeight: videoH,
+            canvasWidth: canvasW,
+            canvasHeight: canvasH,
+            isMirrored: false, // The parent DOM wrapper (camera-mirror-wrapper) already applies CSS -scale-x-100 to mirror both video and canvas on screen.
+            fit: 'cover',
+          });
+
+          if (this.status !== 'LOST' && renderPose.visible) {
+            const is3d = this.is3DAsset(this.config);
+            const kind = this.config?.jewelleryKind;
+            if (is3d && this.threeRenderer) {
+              this.threeRenderer.render(renderPose, kind);
+            } else if (!is3d && this.canvasRenderer) {
+              // Sort by depth (z) so far earring renders first and near earring renders in front
+              const isDualEarring =
+                (kind?.toUpperCase().includes('EARRING') ?? false) ||
+                (this.config?.assetUrl?.includes('earring') ?? false);
+              if (isDualEarring && renderPose.secondaryPosition) {
+                const rz = renderPose.position.z;
+                const sz = renderPose.secondaryPosition.z;
+                let primaryIsFar = false;
+                if (rz !== undefined && sz !== undefined && Math.abs(rz - sz) > 0.5) {
+                  primaryIsFar = rz > sz; // in MediaPipe, larger z is farther
+                } else if (renderPose.yaw !== undefined) {
+                  primaryIsFar = renderPose.yaw > 0
+                    ? renderPose.position.x > renderPose.secondaryPosition.x
+                    : renderPose.position.x < renderPose.secondaryPosition.x;
+                }
+                if (primaryIsFar) {
+                  this.canvasRenderer.drawJewellery(renderPose, false, kind);
+                  this.canvasRenderer.drawJewellery(renderPose, true, kind);
+                } else {
+                  this.canvasRenderer.drawJewellery(renderPose, true, kind);
+                  this.canvasRenderer.drawJewellery(renderPose, false, kind);
+                }
+              } else {
+                this.canvasRenderer.drawJewellery(renderPose, false, kind);
+              }
+            }
+          } else if (this.is3DAsset(this.config) && this.threeRenderer) {
+            this.threeRenderer.render(
+              { ...renderPose, visible: renderPose.visible && this.status !== 'LOST' },
+              this.config?.jewelleryKind,
+            );
+          }
         }
 
         if (this.debugLandmarks && this.canvasRenderer) {
           this.canvasRenderer.drawDebugOverlay({
             landmarks: this.lastLandmarks,
-            pose,
+            pose: this.lastPose,
             fps: Math.round(this.fpsMeter.getFps()),
             latencyMs: performance.now() - t0,
             status: this.status,
@@ -648,13 +856,36 @@ export class ArEngine {
   };
 
   private async runDetection(): Promise<void> {
-    if (this.detecting || !this.detector || !this.host) return;
+    if (this.detecting || !this.host) return;
     this.detecting = true;
     try {
-      const raw = await this.detector.estimate(this.host.video);
-      if (!this.running) return;
-      const { result } = this.processor.process(raw);
-      this.lastLandmarks = result;
+      const neededDetectors = new Set<'face' | 'hand' | 'pose'>();
+      if (this.activeJewellery.size > 0) {
+        for (const entry of this.activeJewellery.values()) {
+          const reg = AnchorRegistry.get(entry.config.jewelleryKind);
+          neededDetectors.add(reg.detector);
+        }
+      } else if (this.detector) {
+        neededDetectors.add(this.detector.name as 'face' | 'hand' | 'pose');
+      } else if (this.config) {
+        const reg = AnchorRegistry.get(this.config.jewelleryKind);
+        neededDetectors.add(reg.detector);
+      }
+
+      for (const detectorKind of neededDetectors) {
+        try {
+          const det = await this.getOrLoadDetector(detectorKind);
+          const raw = await det.estimate(this.host.video);
+          if (!this.running) return;
+          const { result } = this.processor.process(raw);
+          this.lastLandmarksMap.set(detectorKind, result);
+          if (!this.lastLandmarks || (this.detector && this.detector.name === detectorKind)) {
+            this.lastLandmarks = result;
+          }
+        } catch {
+          // Keep previous landmarks for this detector
+        }
+      }
     } catch {
       // Keep previous landmarks.
     } finally {
@@ -734,14 +965,16 @@ export class ArEngine {
     throw lastError instanceof Error ? lastError : new Error('Asset loading failed');
   }
 
-  private async _loadAssetOnce(config: JewelleryConfig): Promise<void> {
+  private async _loadAssetOnce(config: JewelleryConfig, isMulti = false): Promise<void> {
     if (!this.host || !this.canvasRenderer) return;
 
     const use3d = this.is3DAsset(config);
 
     if (use3d && this.host.threeCanvas) {
-      // Clear 2D renderer so no lingering 2D image is drawn
-      this.canvasRenderer.clearJewellery();
+      if (!isMulti) {
+        // Clear 2D renderer so no lingering 2D image is drawn
+        this.canvasRenderer.clearJewellery();
+      }
 
       if (!this.threeRenderer) {
         this.threeRenderer = new ThreeRenderer(this.host.threeCanvas);
@@ -758,7 +991,9 @@ export class ArEngine {
         const bangleSpec = config.bangleConfig || config.productId || config.assetUrl;
         this.threeRenderer.switchBangle(bangleSpec);
       } else {
-        this.threeRenderer.clearJewellery();
+        if (!isMulti) {
+          this.threeRenderer.clearJewellery();
+        }
         const modelUrl = (config.assetUrl?.endsWith('.glb') || config.assetUrl?.endsWith('.gltf'))
           ? config.assetUrl
           : `procedural://${config.jewelleryKind.toLowerCase()}`;
@@ -768,17 +1003,20 @@ export class ArEngine {
         );
       }
     } else {
-      // Clear 3D renderer completely so previous mesh does not remain frozen
-      if (this.threeRenderer) {
-        this.threeRenderer.clearJewellery();
+      if (!isMulti) {
+        // Clear 3D renderer completely so previous mesh does not remain frozen
+        if (this.threeRenderer) {
+          this.threeRenderer.clearJewellery();
+        }
+        this.canvasRenderer.clearJewellery();
       }
-      this.canvasRenderer.clearJewellery();
 
       if (config.assetUrl && !config.assetUrl.startsWith('procedural://')) {
         try {
           await this.canvasRenderer.loadOverlay(
             config.assetUrl,
             config.mirrorForOppositeEar ?? false,
+            config.jewelleryKind,
           );
         } catch {
           this._loadProceduralFallback(config);
@@ -864,6 +1102,16 @@ export class ArEngine {
       default:
         return new FaceDetector();
     }
+  }
+
+  private async getOrLoadDetector(detectorKind: 'face' | 'hand' | 'pose'): Promise<ModelAdapter> {
+    let detector = this.cachedDetectors.get(detectorKind);
+    if (!detector) {
+      detector = this._createDetector(detectorKind);
+      await detector.load();
+      this.cachedDetectors.set(detectorKind, detector);
+    }
+    return detector;
   }
 
   private emit(events: ArEngineEvents): void {
