@@ -137,8 +137,9 @@ export function CameraComponent({
           ref={videoRef}
           playsInline
           muted
+          autoPlay
           className={cn(
-            'absolute inset-0 h-full w-full object-cover object-center',
+            'absolute inset-0 h-full w-full object-cover object-center z-0',
             running ? 'opacity-100' : 'opacity-0',
           )}
         />
@@ -146,13 +147,15 @@ export function CameraComponent({
         {/* 2D Canvas for landmarks/contours (Identical object-fit & crop) */}
         <canvas
           ref={overlayRef}
-          className="absolute inset-0 h-full w-full object-cover object-center pointer-events-none"
+          className="absolute inset-0 h-full w-full object-cover object-center pointer-events-none z-10"
+          style={{ background: 'transparent' }}
         />
 
         {/* Three.js 3D WebGL Canvas for 3D jewellery rendering (Identical object-fit & crop) */}
         <canvas
           ref={threeRef}
-          className="absolute inset-0 h-full w-full object-cover object-center pointer-events-none"
+          className="absolute inset-0 h-full w-full object-cover object-center pointer-events-none z-20"
+          style={{ background: 'transparent' }}
         />
       </div>
 
@@ -326,14 +329,14 @@ export function CameraComponent({
             data-testid="start-camera-btn"
             onClick={onStart}
             disabled={starting}
-            className="rounded-full px-8 py-6 font-medium shadow-xl shadow-primary/20 hover:scale-105 transition-transform"
+            className="rounded-full px-8 py-6 font-medium shadow-xl shadow-primary/20 hover:scale-105 transition-transform cursor-pointer"
           >
             {starting ? (
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
             ) : (
               <Camera className="mr-2 h-5 w-5" />
             )}
-            {starting ? 'Calibrating Camera…' : 'Open Virtual Studio'}
+            {starting ? 'Connecting Camera…' : 'Open Camera'}
           </Button>
           <p className="text-[11px] text-white/50">Private & Secure · Video is processed strictly on your device</p>
         </div>
@@ -353,7 +356,7 @@ export function CameraComponent({
         </div>
       )}
 
-      {/* Dedicated Bottom Safe Zone Shutter Bar (Never covers jewellery or neck) */}
+      {/* Dedicated Bottom Safe Zone Shutter Bar (visible when camera is running) */}
       {running ? (
         <div className="absolute bottom-0 left-0 right-0 h-24 z-20 flex items-center justify-center gap-5 px-6 bg-gradient-to-t from-black via-black/90 to-transparent border-t border-white/10 backdrop-blur-sm">
           <Button
@@ -361,8 +364,9 @@ export function CameraComponent({
             variant="outline"
             size="sm"
             onClick={onStop}
-            className="rounded-full bg-black/70 text-white hover:bg-black/90 border-white/20 text-xs backdrop-blur-md shadow-md"
+            className="rounded-full bg-black/70 text-white hover:bg-black/90 border-white/20 text-xs backdrop-blur-md shadow-md cursor-pointer"
           >
+            <CameraOff className="mr-1.5 h-3.5 w-3.5 text-amber-400" />
             Close Camera
           </Button>
 
@@ -373,7 +377,7 @@ export function CameraComponent({
             onClick={triggerShutter}
             disabled={captureDisabled || countdown !== null}
             title="Take Studio Snapshot"
-            className="group relative flex h-16 w-16 items-center justify-center rounded-full border-4 border-white/90 bg-primary shadow-2xl hover:scale-105 active:scale-95 transition-all duration-150 disabled:opacity-50"
+            className="group relative flex h-16 w-16 items-center justify-center rounded-full border-4 border-white/90 bg-primary shadow-2xl hover:scale-105 active:scale-95 transition-all duration-150 disabled:opacity-50 cursor-pointer"
           >
             <div className="h-11 w-11 rounded-full bg-white transition group-hover:bg-primary-foreground" />
             <Camera className="absolute h-5 w-5 text-primary group-hover:text-white transition" />
@@ -385,7 +389,7 @@ export function CameraComponent({
             size="sm"
             onClick={triggerShutter}
             disabled={captureDisabled || countdown !== null}
-            className="rounded-full bg-black/70 text-white hover:bg-black/90 border-white/20 text-xs backdrop-blur-md shadow-md"
+            className="rounded-full bg-black/70 text-white hover:bg-black/90 border-white/20 text-xs backdrop-blur-md shadow-md cursor-pointer"
           >
             Capture
           </Button>

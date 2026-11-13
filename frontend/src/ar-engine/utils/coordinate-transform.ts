@@ -99,15 +99,27 @@ export function mapPoseToCanvas(
 
   return {
     ...pose,
-    position: { x: mappedPos.x, y: mappedPos.y },
+    position: { x: mappedPos.x, y: mappedPos.y, z: mappedPos.z },
     secondaryPosition: mappedSecPos
-      ? { x: mappedSecPos.x, y: mappedSecPos.y }
+      ? { x: mappedSecPos.x, y: mappedSecPos.y, z: mappedSecPos.z }
       : undefined,
     scale: pose.scale * scaleFactor,
     rotationZ: options.isMirrored ? -pose.rotationZ : pose.rotationZ,
     rotationY: options.isMirrored && pose.rotationY !== undefined ? -pose.rotationY : pose.rotationY,
     yaw: options.isMirrored && pose.yaw !== undefined ? -pose.yaw : pose.yaw,
     visible: pose.visible && mappedPos.visible !== false,
+    ringSegment: pose.ringSegment
+      ? {
+          ...pose.ringSegment,
+          mcp: mapNormalizedToCanvas(pose.ringSegment.mcp, options, isNormalized) as any,
+          pip: mapNormalizedToCanvas(pose.ringSegment.pip, options, isNormalized) as any,
+          p0: pose.ringSegment.p0 ? (mapNormalizedToCanvas(pose.ringSegment.p0, options, isNormalized) as any) : undefined,
+          p5: pose.ringSegment.p5 ? (mapNormalizedToCanvas(pose.ringSegment.p5, options, isNormalized) as any) : undefined,
+          p17: pose.ringSegment.p17 ? (mapNormalizedToCanvas(pose.ringSegment.p17, options, isNormalized) as any) : undefined,
+          length: pose.ringSegment.length * scaleFactor,
+          width: pose.ringSegment.width * scaleFactor,
+        }
+      : undefined,
   };
 }
 

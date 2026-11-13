@@ -25,8 +25,8 @@ export type AnchorProfile = {
 };
 
 export type PoseFit = {
-  position:          Vec2;
-  secondaryPosition?: Vec2;
+  position:          Vec2 & { z?: number };
+  secondaryPosition?: Vec2 & { z?: number };
   scale:             number;
   rotationZ:         number;
   /** Screen-space X tilt (pitch) applied to 3D jewellery. */
@@ -37,10 +37,27 @@ export type PoseFit = {
   visible:           boolean;
   /** Depth hint: positive = closer to camera, negative = further. */
   depthHint?:        number;
+  /** Vertical adjustment offset in pixels for catenary drape pinning. */
+  verticalOffset?:   number;
   /** Head 3D Yaw in radians (positive = looking right, negative = looking left). */
   yaw?:              number;
   /** Head 3D Pitch in radians. */
   pitch?:            number;
+  /** Ring 3D orientation quaternion [x, y, z, w]. */
+  ringQuaternion?:   [number, number, number, number];
+  /** Finger segment metadata for occluder: MCP and PIP coordinates and segment dimensions. */
+  ringSegment?: {
+    mcp: Vec3;
+    pip: Vec3;
+    p0?: Vec3;
+    p5?: Vec3;
+    p17?: Vec3;
+    length: number;
+    width: number;
+    sizeRatio?: number;
+    palmFacingCamera: boolean;
+    palmFacingDot?: number;
+  };
 };
 
 export type TrackingStatus = 'INITIALIZING' | 'TRACKING' | 'DEGRADED' | 'LOST';
@@ -54,6 +71,31 @@ export type AssetType =
   | 'ALPHA_MASK'
   | 'PROCEDURAL';
 
+export type RingGemShape = 'round' | 'princess' | 'emerald' | 'pear';
+export type RingBandMetal = 'yellow' | 'white' | 'rose';
+
+export type RingConfig = {
+  id: string;
+  gemColor: string;
+  gemShape: RingGemShape;
+  gemScale: number;
+  bandMetal: RingBandMetal;
+  bandThickness: number;
+  hasHalo: boolean;
+  haloColor?: string;
+  accentStones: boolean;
+};
+
+export type BangleConfig = {
+  id: string;
+  name?: string;
+  bandMetal: 'yellow' | 'white' | 'rose';
+  bandThickness?: number;
+  studColor?: string;
+  studShape?: 'round' | 'diamond' | 'oval';
+  studCount?: number;
+};
+
 export type JewelleryConfig = {
   jewelleryKind:      JewelleryKind;
   assetUrl:           string;
@@ -63,6 +105,9 @@ export type JewelleryConfig = {
   defaultRotationZ?:  number;
   mirrorForOppositeEar?: boolean;
   fingerIndex?:       number | null;
+  productId?:         string;
+  ringConfig?:        RingConfig;
+  bangleConfig?:      BangleConfig;
 };
 
 export type ArEngineConfig = JewelleryConfig & {

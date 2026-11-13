@@ -33,7 +33,7 @@ export const AssetType = {
   MODEL_GLB: 'MODEL_GLB',
   MODEL_GLTF: 'MODEL_GLTF',
   MODEL_3D: 'MODEL_GLB',
-  PROCEDURAL: 'MODEL_GLB',
+  PROCEDURAL: 'PROCEDURAL',
   ALPHA_MASK: 'ALPHA_MASK',
 } as const;
 export type AssetType = (typeof AssetType)[keyof typeof AssetType];

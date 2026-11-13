@@ -1,4 +1,4 @@
-import type { JewelleryConfig } from '@vj/ar-engine';
+import { resolveRingConfig, type JewelleryConfig, type RingConfig, type BangleConfig } from '@vj/ar-engine';
 import type { JewelleryKind } from '@vj/shared';
 import type { JewelleryAssetDto } from '@vj/types';
 import { api } from '@/lib/api';
@@ -49,17 +49,23 @@ export function getDefaultProceduralUrl(kind: JewelleryKind): string {
 export async function toJewelleryConfig(
   jewelleryKind: JewelleryKind,
   asset: AssetLike,
+  productId?: string,
+  ringConfig?: RingConfig,
+  bangleConfig?: BangleConfig,
 ): Promise<JewelleryConfig> {
   const source = asset?.url || getDefaultProceduralUrl(jewelleryKind);
   return {
     jewelleryKind,
     assetUrl: await cachedAssetUrl(source),
-    assetType: asset?.assetType ?? 'PROCEDURAL',
+    assetType: (jewelleryKind === 'RINGS' || jewelleryKind === 'BANGLES') ? 'PROCEDURAL' : (asset?.assetType ?? 'PROCEDURAL'),
     anchorProfile: (asset?.anchorProfile ?? {}) as JewelleryConfig['anchorProfile'],
     defaultScale: asset?.defaultScale ?? 1,
     defaultRotationZ: asset?.defaultRotationZ ?? 0,
     mirrorForOppositeEar: asset?.mirrorForOppositeEar ?? (jewelleryKind === 'EARRINGS'),
     fingerIndex: asset?.fingerIndex ?? (jewelleryKind === 'RINGS' ? 3 : null),
+    productId,
+    ringConfig: ringConfig ?? (jewelleryKind === 'RINGS' ? resolveRingConfig(productId || source) : undefined),
+    bangleConfig,
   };
 }
 

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@vj/api-client';
 import { Button } from '@vj/ui';
@@ -11,10 +11,13 @@ import { TryOnExperience } from '@/features/try-on/TryOnExperience';
 import { TryOnLoadingState } from '@/components/try-on/try-on-loading-state';
 import { TryOnErrorState } from '@/components/try-on/try-on-error-state';
 import { getProductFromCacheOrFallback } from '@/features/try-on/offline-catalog';
+import { useStudioStore, deriveCategoryFromProduct } from '@/stores/studio-store';
 
 export default function TryOnPage() {
+  const router = useRouter();
   const params = useParams<{ productId: string }>();
   const productId = params.productId;
+  const { activeCategory } = useStudioStore();
 
   const productQuery = useQuery({
     queryKey: queryKeys.products.detail(productId),
@@ -27,17 +30,32 @@ export default function TryOnPage() {
         throw new Error('Product not found in catalogue');
       }
     },
+    placeholderData: (prev) => prev,
     enabled: Boolean(productId),
   });
+
+  const handleExitStudio = () => {
+    const derivedCat = productQuery.data ? deriveCategoryFromProduct(productQuery.data) : 'all';
+    const cat = activeCategory && activeCategory !== 'all' ? activeCategory : derivedCat;
+    console.log('[Studio] CLOSE (route) - activeCategory:', cat, 'selectedItemId:', productId);
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+    } else {
+      router.replace(`/?category=${cat}&item=${productId}`);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
       <header className="flex items-center justify-between border-b px-4 py-3.5 sm:px-6 bg-card/60 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="sm" className="rounded-full">
-            <Link href={productQuery.data ? `/products/${productQuery.data.slug}` : '/products'}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Exit Studio
-            </Link>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleExitStudio}
+            className="rounded-full cursor-pointer"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" /> Exit Studio
           </Button>
           <div className="h-4 w-px bg-border hidden sm:block" />
           <div className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-primary font-semibold">
@@ -66,7 +84,7 @@ export default function TryOnPage() {
             onRetry={() => productQuery.refetch()}
           />
         ) : productQuery.data ? (
-          <TryOnExperience product={productQuery.data} />
+          <TryOnExperience product={productQuery.data} onClose={handleExitStudio} />
         ) : (
           <TryOnErrorState
             title="Product Unavailable"

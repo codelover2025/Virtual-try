@@ -18,14 +18,14 @@ import type { PoseFit } from '../types.js';
 type DrawMode = 'none' | 'dots' | 'debug';
 
 const MAX_CACHE_ENTRIES = 16;
-const MAX_CACHE_BYTES   = 50 * 1024 * 1024;
+const MAX_CACHE_BYTES = 50 * 1024 * 1024;
 
 export class Canvas2dRenderer {
-  private image:          HTMLImageElement | null = null;
+  private image: HTMLImageElement | null = null;
   private mirrorSecondary = false;
-  private targetOpacity   = 1;
-  private currentOpacity  = 1;
-  private currentUrl      = '';
+  private targetOpacity = 1;
+  private currentOpacity = 1;
+  private currentUrl = '';
 
   // Image asset cache: URL → loaded HTMLImageElement with metadata
   private readonly imageCache = new Map<string, { img: HTMLImageElement; bytes: number; lastUsed: number }>();
@@ -40,7 +40,7 @@ export class Canvas2dRenderer {
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly ctx:    CanvasRenderingContext2D,
+    private readonly ctx: CanvasRenderingContext2D,
   ) {
     // Enable image smoothing for better quality
     ctx.imageSmoothingEnabled = true;
@@ -127,19 +127,19 @@ export class Canvas2dRenderer {
       kindKey.includes('BANGLE') || kindKey.includes('BRACELET') || kindKey.includes('WATCH');
 
     if (isNecklace) {
-      // Golden calibration from app.py: necklace_w = int(face_w * 1.50)
-      const faceW = pose.scale * 100;
-      w = Math.max(160, Math.min(560, faceW * 1.50));
+      // 2. Chain width: asset has 28% side padding; scale w by 0.74 so the actual chain spans ~0.55 x shoulder width
+      const shoulderRef = pose.scale * 100;
+      w = Math.max(160, Math.min(850, shoulderRef * 0.74));
       h = w * aspect;
       originX = -w / 2;
-      originY = -h * 0.48; // Centered at neck base / suprasternal notch
+      originY = -h * 0.35; // Anchored at neck base so top ends connect directly to shoulder line
     } else if (isEarring) {
       // Golden calibration from app.py: earring_w = max(14, int(face_width * 0.12))
       const faceW = pose.scale * 100;
       w = Math.max(14, Math.min(64, faceW * 0.12));
       h = w * aspect;
       originX = -w / 2;
-      originY = -h * 0.08; // Top hook attaches directly to earlobe
+      originY = -h * 0.08; // Top hook attaches directly to earlobe piercing (app.py standard)
     } else if (isNose) {
       w = Math.max(10, Math.min(36, pose.scale * 14));
       h = w * aspect;
@@ -169,17 +169,29 @@ export class Canvas2dRenderer {
 
     let alpha = this.currentOpacity * (pose.confidence > 0 ? Math.min(1, pose.confidence + 0.3) : 1);
 
-    // When head yaw exceeds ~35 degrees, fade out earring on the far side
+    // Head yaw fading thresholds for earrings:
+    // |yaw| < 20 deg: show both earrings.
+    // 20-45 deg: fade the far-side earring toward 0 opacity.
+    // > 45 deg: hide the far earring completely, keep the near one attached.
     if (isEarring && pose.secondaryPosition && pose.yaw !== undefined) {
-      const FAR_YAW_THRESHOLD = 0.61; // ~35 deg
-      const FAR_YAW_MAX = 0.85;       // ~48.7 deg
+      const YAW_20_DEG = (20 * Math.PI) / 180; // ~0.349 rad
+      const YAW_45_DEG = (45 * Math.PI) / 180; // ~0.785 rad
       const absYaw = Math.abs(pose.yaw);
-      if (absYaw > FAR_YAW_THRESHOLD) {
-        const fade = Math.max(0, 1 - (absYaw - FAR_YAW_THRESHOLD) / (FAR_YAW_MAX - FAR_YAW_THRESHOLD));
+      if (absYaw > YAW_20_DEG) {
+        const fade = absYaw >= YAW_45_DEG
+          ? 0
+          : Math.max(0, 1 - (absYaw - YAW_20_DEG) / (YAW_45_DEG - YAW_20_DEG));
         const otherPos = secondary ? pose.position : pose.secondaryPosition;
-        // In image coordinates, yaw > 0 is facing right -> left side (smaller X) is occluded
-        // yaw < 0 is facing left -> right side (larger X) is occluded
-        const isFarSide = pose.yaw > 0 ? pos.x < otherPos.x : pos.x > otherPos.x;
+
+        // When yaw > 0 (looking right): ear on screen right (larger X) goes behind head (far side).
+        // When yaw < 0 (looking left): ear on screen left (smaller X) goes behind head (far side).
+        let isFarSide = false;
+        if (pos.z !== undefined && otherPos.z !== undefined && Math.abs(pos.z - otherPos.z) > 0.04) {
+          isFarSide = pos.z > otherPos.z; // in MediaPipe, larger z is farther away
+        } else {
+          isFarSide = pose.yaw > 0 ? pos.x > otherPos.x : pos.x < otherPos.x;
+        }
+
         if (isFarSide) {
           alpha *= fade;
         }
@@ -195,11 +207,64 @@ export class Canvas2dRenderer {
     if (secondary && this.mirrorSecondary) {
       this.ctx.scale(-1, 1);
     }
-    this.ctx.shadowColor   = 'rgba(0,0,0,0.16)';
-    this.ctx.shadowBlur    = 3;
-    this.ctx.shadowOffsetY = 1;
-    this.ctx.shadowOffsetX = 0;
-    this.ctx.drawImage(img, originX, originY, w, h);
+
+    if (isNecklace) {
+      // 4. Curve the chain as a catenary draping on collarbone, and pin ends to shoulder line
+      const numSlices = 40;
+      const sliceW = w / numSlices;
+      const srcSliceW = img.naturalWidth / numSlices;
+      const sag = Math.max(6, Math.min(32, h * 0.14));
+      const k = 1.25;
+      const coshK = Math.cosh(k);
+      const vertOffset = pose.verticalOffset ?? 0;
+
+      for (let i = 0; i < numSlices; i++) {
+        const u = (i + 0.5) / numSlices;
+        const t = (u - 0.5) * 2; // -1 to +1
+        const absT = Math.abs(t);
+
+        // Catenary curve: lowest at center (t = 0), curving upward at sides (-Y)
+        const catRatio = (Math.cosh(k * t) - 1) / (coshK - 1);
+        const yOffset = -sag * catRatio;
+
+        // Suspension pinning: When user adjusts vertical position, the suspension ends
+        // at the sides stay firmly connected to the neck and shoulder line (drape = 0 at |t| = 1),
+        // while the center and pendant drape down into the chest.
+        const drape = vertOffset * (1 - catRatio);
+
+        // Fade only at the very extreme outer edge (|t| > 0.92) where the chain passes behind the neck over the shoulder line
+        let edgeFade = 1.0;
+        if (absT > 0.92) {
+          const f = Math.max(0, Math.min(1, (1.0 - absT) / 0.08));
+          edgeFade = f * f * (3 - 2 * f);
+        }
+
+        const sliceAlpha = alpha * edgeFade;
+        if (sliceAlpha < 0.01) continue;
+
+        const sx = i * srcSliceW;
+        const dx = originX + i * sliceW;
+        const dw = sliceW + 0.5;
+
+        // Top of chain stays anchored at originY + yOffset at the shoulder line,
+        // and the slice extends down by drape to drop the pendant down into the chest
+        const sliceY = originY + yOffset;
+        const sliceH = h + Math.max(0, drape);
+
+        this.ctx.globalAlpha = sliceAlpha;
+        this.ctx.drawImage(
+          img,
+          sx, 0, srcSliceW, img.naturalHeight,
+          dx, sliceY + (drape < 0 ? drape : 0), dw, sliceH,
+        );
+      }
+    } else {
+      this.ctx.shadowColor = 'rgba(0,0,0,0.16)';
+      this.ctx.shadowBlur = 3;
+      this.ctx.shadowOffsetY = 1;
+      this.ctx.shadowOffsetX = 0;
+      this.ctx.drawImage(img, originX, originY, w, h);
+    }
     this.ctx.restore();
     this.ctx.globalAlpha = 1;
   }
@@ -225,9 +290,9 @@ export class Canvas2dRenderer {
   }
 
   drawLandmarks(
-    named:  Record<string, { x: number; y: number }>,
-    keys:   string[],
-    mode:   DrawMode = 'dots',
+    named: Record<string, { x: number; y: number }>,
+    keys: string[],
+    mode: DrawMode = 'dots',
   ): void {
     if (mode === 'none') return;
     this.ctx.save();
@@ -237,10 +302,10 @@ export class Canvas2dRenderer {
 
       const color = key.includes('EAR') ? '#22c55e'
         : key.includes('RING') ? '#f59e0b'
-        : key.includes('WRIST') || key.includes('BANGLE') ? '#a78bfa'
-        : key.includes('NOSE') ? '#f472b6'
-        : key.includes('NECKLACE') || key.includes('CHIN') ? '#06b6d4'
-        : '#38bdf8';
+          : key.includes('WRIST') || key.includes('BANGLE') ? '#a78bfa'
+            : key.includes('NOSE') ? '#f472b6'
+              : key.includes('NECKLACE') || key.includes('CHIN') ? '#06b6d4'
+                : '#38bdf8';
 
       // Outer glow
       this.ctx.beginPath();
@@ -430,7 +495,7 @@ export class Canvas2dRenderer {
   async exportBlob(
     sources: Array<HTMLVideoElement | HTMLCanvasElement>,
     mimeType = 'image/jpeg',
-    quality  = 0.94,
+    quality = 0.94,
   ): Promise<Blob> {
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -438,7 +503,7 @@ export class Canvas2dRenderer {
     // Reuse or create offscreen canvas
     if (!this.offscreenCanvas || this.offscreenCanvas.width !== w || this.offscreenCanvas.height !== h) {
       this.offscreenCanvas = document.createElement('canvas');
-      this.offscreenCanvas.width  = w;
+      this.offscreenCanvas.width = w;
       this.offscreenCanvas.height = h;
       this.offscreenCtx = this.offscreenCanvas.getContext('2d');
     }
@@ -471,8 +536,8 @@ export class Canvas2dRenderer {
   // ─── Cleanup ───────────────────────────────────────────────────────────────
 
   dispose(): void {
-    this.image       = null;
-    this.currentUrl  = '';
+    this.image = null;
+    this.currentUrl = '';
     this.imageCache.clear();
     this.loading.clear();
     this.totalCacheBytes = 0;
@@ -544,9 +609,9 @@ export class Canvas2dRenderer {
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const img  = new Image();
+    const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload  = () => resolve(img);
+    img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load overlay: ${url}`));
     img.src = url;
   });

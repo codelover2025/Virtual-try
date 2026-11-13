@@ -27,13 +27,13 @@ register(JewelleryKind.EARRINGS, {
 });
 
 register(JewelleryKind.NECKLACE, {
-  detector: 'face',
+  detector: 'pose',
   defaultProfile: {
     primaryAnchor: 'NECK_BASE',
-    scaleRef: 'FACE_WIDTH',
+    scaleRef: 'SHOULDER_WIDTH',
     offset: { x: 0, y: 0, z: 0 },
-    minScale: 0.5,
-    maxScale: 3.0,
+    minScale: 0.35,
+    maxScale: 3.5,
   },
 });
 
@@ -62,26 +62,24 @@ register(JewelleryKind.SUNGLASSES, {
 });
 
 register(JewelleryKind.PENDANT, {
-  detector: 'face',
+  detector: 'pose',
   defaultProfile: {
     primaryAnchor: 'NECK_BASE',
-    secondaryAnchor: 'COLLARBONE',
-    scaleRef: 'FACE_WIDTH',
+    scaleRef: 'SHOULDER_WIDTH',
     offset: { x: 0, y: 0, z: 0 },
-    minScale: 0.4,
-    maxScale: 2.8,
+    minScale: 0.35,
+    maxScale: 3.5,
   },
 });
 
 register(JewelleryKind.MANGALSUTRA, {
-  detector: 'face',
+  detector: 'pose',
   defaultProfile: {
     primaryAnchor: 'NECK_BASE',
-    secondaryAnchor: 'COLLARBONE',
-    scaleRef: 'FACE_WIDTH',
+    scaleRef: 'SHOULDER_WIDTH',
     offset: { x: 0, y: 0, z: 0 },
-    minScale: 0.4,
-    maxScale: 3.0,
+    minScale: 0.35,
+    maxScale: 3.5,
   },
 });
 
