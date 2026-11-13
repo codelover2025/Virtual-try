@@ -805,8 +805,8 @@ export function TryOnExperience({
                   </div>
                   <input
                     type="range"
-                    min="-25"
-                    max="25"
+                    min="-30"
+                    max="30"
                     step="1"
                     value={fineTuneY}
                     onChange={(e) => handleFineTuneChange(fineTuneScale, parseInt(e.target.value, 10))}

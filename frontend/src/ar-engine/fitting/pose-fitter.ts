@@ -183,6 +183,14 @@ export class PoseFitter {
       }
     }
 
+    // When user adjusts necklace position, automatically scale chain bigger/smaller:
+    // Moving necklace down (positive Y towards chest) -> chain widens & expands.
+    // Moving necklace up (negative Y towards throat/choker) -> chain narrows & tightens.
+    if (this.isNecklaceFit(primaryKey)) {
+      const positionScaleFactor = Math.max(0.60, Math.min(1.50, 1.0 + (this.fineTuneOffsetY / 70)));
+      targetScale *= positionScaleFactor;
+    }
+
     const minS = this.profile.minScale ?? 0.2;
     const maxS = this.profile.maxScale ?? 3;
     targetScale = Math.min(maxS, Math.max(minS, targetScale * this.fineTuneScaleMul));
