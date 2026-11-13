@@ -339,6 +339,16 @@ export class ArEngine {
     this.fitter?.setFineTune(scaleMultiplier, offsetY);
   }
 
+  private necklaceStyle: 'layered' | 'choker' | 'long_chain' = 'layered';
+
+  setNecklaceStyle(style: 'layered' | 'choker' | 'long_chain'): void {
+    this.necklaceStyle = style;
+  }
+
+  getNecklaceStyle(): 'layered' | 'choker' | 'long_chain' {
+    return this.necklaceStyle;
+  }
+
   getBodyModel(): BodyModelMeasurements {
     return this.bodyModel.getMeasurements();
   }
@@ -516,10 +526,15 @@ export class ArEngine {
             this.threeRenderer.render(renderPose, kind);
           } else if (!is3d && this.canvasRenderer) {
             // Sort by depth (z) so far earring renders first and near earring renders in front
-            const isDualEarring =
+            const isEarring =
               (kind?.toUpperCase().includes('EARRING') ?? false) ||
               (this.config?.assetUrl?.includes('earring') ?? false);
-            if (isDualEarring && renderPose.secondaryPosition) {
+            const isNecklace =
+              (kind?.toUpperCase().includes('NECK') ?? false) ||
+              (kind?.toUpperCase().includes('PENDANT') ?? false) ||
+              (kind?.toUpperCase().includes('MANGALSUTRA') ?? false);
+
+            if (isEarring && renderPose.secondaryPosition) {
               const rz = renderPose.position.z;
               const sz = renderPose.secondaryPosition.z;
               let primaryIsFar = false;
@@ -535,6 +550,19 @@ export class ArEngine {
                 this.canvasRenderer.drawJewellery(renderPose, true, kind);
               } else {
                 this.canvasRenderer.drawJewellery(renderPose, true, kind);
+                this.canvasRenderer.drawJewellery(renderPose, false, kind);
+              }
+            } else if (isNecklace && renderPose.secondaryPosition) {
+              // Necklace display modes:
+              // 'layered' (default): renders both Choker (primary) and Long Chain (secondary)
+              // 'choker': renders only the Choker
+              // 'long_chain': renders only the Long Chain
+              if (this.necklaceStyle === 'layered') {
+                this.canvasRenderer.drawJewellery(renderPose, true, kind);  // Long chain behind
+                this.canvasRenderer.drawJewellery(renderPose, false, kind); // Choker in front
+              } else if (this.necklaceStyle === 'long_chain') {
+                this.canvasRenderer.drawJewellery(renderPose, true, kind);
+              } else {
                 this.canvasRenderer.drawJewellery(renderPose, false, kind);
               }
             } else {

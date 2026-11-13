@@ -98,11 +98,17 @@ export function TryOnExperience({
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [fineTuneScale, setFineTuneScale] = useState(1.0);
   const [fineTuneY, setFineTuneY] = useState(0);
+  const [necklaceStyle, setNecklaceStyle] = useState<'layered' | 'choker' | 'long_chain'>('layered');
 
   const handleFineTuneChange = (scale: number, y: number) => {
     setFineTuneScale(scale);
     setFineTuneY(y);
     engineRef.current?.setFineTune(scale, y);
+  };
+
+  const handleNecklaceStyleChange = (style: 'layered' | 'choker' | 'long_chain') => {
+    setNecklaceStyle(style);
+    engineRef.current?.setNecklaceStyle(style);
   };
 
   const handleResetFineTune = () => {
@@ -391,6 +397,7 @@ export function TryOnExperience({
           debugLandmarks: isDebugMode,
         },
       );
+      engine.setNecklaceStyle(necklaceStyle);
       setRunning(true);
       toast.success('Studio camera connected');
     } catch (err: unknown) {
@@ -783,6 +790,53 @@ export function TryOnExperience({
                 )}
               </div>
               <div className="space-y-3 text-xs">
+                {(currentProduct?.jewelleryKind === 'NECKLACE' ||
+                  currentProduct?.jewelleryKind === 'PENDANT' ||
+                  currentProduct?.jewelleryKind === 'MANGALSUTRA') && (
+                  <div>
+                    <div className="flex justify-between text-muted-foreground mb-1.5">
+                      <span>Chain Style</span>
+                      <span className="font-mono text-[11px] text-foreground">
+                        {necklaceStyle === 'layered' ? 'Layered (Both)' : necklaceStyle === 'long_chain' ? 'Long Chain' : 'Choker'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 p-0.5 rounded-lg bg-background/80 border text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => handleNecklaceStyleChange('layered')}
+                        className={`py-1 rounded font-medium transition-all ${
+                          necklaceStyle === 'layered'
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Layered
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleNecklaceStyleChange('choker')}
+                        className={`py-1 rounded font-medium transition-all ${
+                          necklaceStyle === 'choker'
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Choker
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleNecklaceStyleChange('long_chain')}
+                        className={`py-1 rounded font-medium transition-all ${
+                          necklaceStyle === 'long_chain'
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Long Chain
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div>
                   <div className="flex justify-between text-muted-foreground mb-1">
                     <span>Size Ratio</span>

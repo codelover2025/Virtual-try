@@ -129,10 +129,13 @@ export class Canvas2dRenderer {
     if (isNecklace) {
       // 2. Necklace width = ~0.55 x shoulder width, scaled with depth
       const shoulderRef = pose.scale * 100;
-      w = Math.max(120, Math.min(800, shoulderRef * 0.55));
+      const isLongChain = secondary && pose.secondaryPosition;
+      // Long chain automatically scales bigger (+28%) with wider chest loop
+      const chainScaleMul = isLongChain ? 1.28 : 1.0;
+      w = Math.max(120, Math.min(850, shoulderRef * 0.55 * chainScaleMul));
       h = w * aspect;
       originX = -w / 2;
-      originY = -h * 0.40; // Centered at neck base to drape naturally over collarbone
+      originY = isLongChain ? -h * 0.36 : -h * 0.40; // Centered at neck base / collarbone drape
     } else if (isEarring) {
       // Golden calibration from app.py: earring_w = max(14, int(face_width * 0.12))
       const faceW = pose.scale * 100;
@@ -213,7 +216,9 @@ export class Canvas2dRenderer {
       const numSlices = 36;
       const sliceW = w / numSlices;
       const srcSliceW = img.naturalWidth / numSlices;
-      const sag = Math.max(4, Math.min(22, h * 0.10));
+      const isLongChain = secondary && pose.secondaryPosition;
+      const sagRatio = isLongChain ? 0.16 : 0.10;
+      const sag = Math.max(4, Math.min(32, h * sagRatio));
       const k = 1.25;
       const coshK = Math.cosh(k);
 

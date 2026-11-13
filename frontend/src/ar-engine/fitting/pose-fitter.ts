@@ -303,6 +303,19 @@ export class PoseFitter {
           z: secondary.z,
         };
       }
+    } else if (this.isNecklaceFit(primaryKey)) {
+      oy += this.fineTuneOffsetY;
+      rawPos = { x: primary.x + ox, y: primary.y + oy, z: primary.z };
+      if (secondary) {
+        // Long chain hangs lower onto the collarbone / chest area
+        // When vertical position slider is adjusted, the long chain smoothly follows and extends
+        const dropOffset = Math.max(30, (secondary.y - primary.y) * 0.90) + (this.fineTuneOffsetY * 0.55);
+        rawSec = {
+          x: secondary.x,
+          y: primary.y + dropOffset,
+          z: secondary.z,
+        };
+      }
     } else {
       oy += this.fineTuneOffsetY;
       rawPos = { x: primary.x + ox, y: primary.y + oy, z: primary.z };
