@@ -29,7 +29,7 @@ pnpm install
 pnpm dev
 ```
 
-*(On Windows, you can simply double-click [`run_web.bat`](file:///C:/Users/ankus/Downloads/Virtual-try/run_web.bat) in the root directory)*
+*(On Windows, you can simply double-click [`run_web.bat`](run_web.bat) in the root directory)*
 
 Open your browser to: **`http://localhost:3000`**
 
@@ -52,7 +52,7 @@ pnpm start
 
 ## 3. Adding New Products to the Catalogue
 
-All jewellery pieces available in the studio and storefront are defined in [`frontend/src/features/try-on/fallback-catalogue.ts`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/features/try-on/fallback-catalogue.ts).
+All jewellery pieces available in the studio and storefront are defined in [`frontend/src/features/try-on/fallback-catalogue.ts`](frontend/src/features/try-on/fallback-catalogue.ts).
 
 ### 3.1 Adding a 2D PNG Overlay Piece (e.g. Necklace, Earring)
 
@@ -122,10 +122,10 @@ For procedural 3D rings, define a `RingConfig` specifying the gemstone color, sh
 
 | Path | Component | Purpose |
 |---|---|---|
-| **`/`** | [`frontend/src/app/page.tsx`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/app/page.tsx) | Luxury storefront hero, category spotlights, and interactive studio modal overlay. |
-| **`/try-on`** | [`frontend/src/app/try-on/page.tsx`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/app/try-on/page.tsx) | Virtual Studio hub (defaults to Single-Piece mode). |
-| **`/try-on/[productId]`** | [`frontend/src/app/try-on/[productId]/page.tsx`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/app/try-on/[productId]/page.tsx) | Single-piece try-on stage dedicated to a selected product. |
-| **`/try-on/multi`** | [`frontend/src/app/try-on/multi/page.tsx`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/app/try-on/multi/page.tsx) | Dedicated Multi-Jewellery Studio with Active Fitting pills & necklace-only sliders. |
+| **`/`** | [`frontend/src/app/page.tsx`](frontend/src/app/page.tsx) | Luxury storefront hero, category spotlights, and interactive studio modal overlay. |
+| **`/try-on`** | [`frontend/src/app/try-on/page.tsx`](frontend/src/app/try-on/page.tsx) | Virtual Studio hub (defaults to Single-Piece mode). |
+| **`/try-on/[productId]`** | [`frontend/src/app/try-on/[productId]/page.tsx`](frontend/src/app/try-on/[productId]/page.tsx) | Single-piece try-on stage dedicated to a selected product. |
+| **`/try-on/multi`** | [`frontend/src/app/try-on/multi/page.tsx`](frontend/src/app/try-on/multi/page.tsx) | Dedicated Multi-Jewellery Studio with Active Fitting pills & necklace-only sliders. |
 
 ---
 

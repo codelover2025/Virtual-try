@@ -51,14 +51,14 @@ flowchart TD
 
 | Module | Location | Primary Responsibilities |
 |---|---|---|
-| **AR Engine Facade** | [`frontend/src/ar-engine/ar-engine.ts`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/ar-engine/ar-engine.ts) | Manages the main rAF render loop, detector scheduling, multi-item fit resolution, and event broadcasting. |
-| **Camera Engine** | [`frontend/src/ar-engine/camera/camera-engine.ts`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/ar-engine/camera/camera-engine.ts) | Enforces 720p @ 30 FPS constraint ladders, device switching, facing flip, and camera health watchdog. |
-| **Model Detectors** | [`frontend/src/ar-engine/detectors/`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/ar-engine/detectors/) | Encapsulates MediaPipe Tasks Vision (`FaceLandmarker`, `PoseLandmarkerLite`, `HandLandmarker`). |
-| **Pose Fitter** | [`frontend/src/ar-engine/fitting/pose-fitter.ts`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/ar-engine/fitting/pose-fitter.ts) | Maps 2D/3D landmarks to real physical jewellery anchors, calculating orientation, scale, and spring damping. |
-| **Canvas 2D Renderer** | [`frontend/src/ar-engine/renderers/canvas2d-renderer.ts`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/ar-engine/renderers/canvas2d-renderer.ts) | Multi-overlay 2D image compositor with bilateral earring depth sorting and catenary drape calibration. |
-| **Three.js 3D Renderer** | [`frontend/src/ar-engine/renderers/three-renderer.ts`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/ar-engine/renderers/three-renderer.ts) | Physically-based WebGL renderer for procedural gemstone rings, two-pass bangles, and finger occluders. |
-| **Adaptive Controller** | [`frontend/src/ar-engine/performance/adaptive-controller.ts`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/ar-engine/performance/adaptive-controller.ts) | Dynamic performance budgeting: dynamically lowers detection frequency and scales resolution to maintain stable FPS. |
-| **Try-On Experience UI** | [`frontend/src/features/try-on/TryOnExperience.tsx`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/features/try-on/TryOnExperience.tsx) | Studio UI orchestration: mode transitions (single vs. multi), active piece state, and camera HUD controls. |
+| **AR Engine Facade** | [`frontend/src/ar-engine/ar-engine.ts`](frontend/src/ar-engine/ar-engine.ts) | Manages the main rAF render loop, detector scheduling, multi-item fit resolution, and event broadcasting. |
+| **Camera Engine** | [`frontend/src/ar-engine/camera/camera-engine.ts`](frontend/src/ar-engine/camera/camera-engine.ts) | Enforces 720p @ 30 FPS constraint ladders, device switching, facing flip, and camera health watchdog. |
+| **Model Detectors** | [`frontend/src/ar-engine/detectors/`](frontend/src/ar-engine/detectors/) | Encapsulates MediaPipe Tasks Vision (`FaceLandmarker`, `PoseLandmarkerLite`, `HandLandmarker`). |
+| **Pose Fitter** | [`frontend/src/ar-engine/fitting/pose-fitter.ts`](frontend/src/ar-engine/fitting/pose-fitter.ts) | Maps 2D/3D landmarks to real physical jewellery anchors, calculating orientation, scale, and spring damping. |
+| **Canvas 2D Renderer** | [`frontend/src/ar-engine/renderers/canvas2d-renderer.ts`](frontend/src/ar-engine/renderers/canvas2d-renderer.ts) | Multi-overlay 2D image compositor with bilateral earring depth sorting and catenary drape calibration. |
+| **Three.js 3D Renderer** | [`frontend/src/ar-engine/renderers/three-renderer.ts`](frontend/src/ar-engine/renderers/three-renderer.ts) | Physically-based WebGL renderer for procedural gemstone rings, two-pass bangles, and finger occluders. |
+| **Adaptive Controller** | [`frontend/src/ar-engine/performance/adaptive-controller.ts`](frontend/src/ar-engine/performance/adaptive-controller.ts) | Dynamic performance budgeting: dynamically lowers detection frequency and scales resolution to maintain stable FPS. |
+| **Try-On Experience UI** | [`frontend/src/features/try-on/TryOnExperience.tsx`](frontend/src/features/try-on/TryOnExperience.tsx) | Studio UI orchestration: mode transitions (single vs. multi), active piece state, and camera HUD controls. |
 
 ---
 

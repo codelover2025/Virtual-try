@@ -4,7 +4,7 @@ This folder contains the complete, self-contained **Lumière Virtual Jewellery T
 
 ---
 
-## 💎 Features Included
+## Features Included
 
 - **Virtual AR Studio (`/studio`)**: Real-time webcam try-on across 5 categories:
   - **Earrings**: Dual earlobe landmark tracking with head-roll tilt and jaw depth occlusion.
@@ -19,7 +19,7 @@ This folder contains the complete, self-contained **Lumière Virtual Jewellery T
 
 ---
 
-## 🚀 How to Run
+## How to Run
 
 Navigate into this `frontend` directory and run:
 
@@ -38,11 +38,11 @@ npm run dev
 ```
 
 Then open your browser at:
-👉 **[http://localhost:3000](http://localhost:3000)**
+ **[http://localhost:3000](http://localhost:3000)**
 
 ---
 
-## 📁 Directory Structure
+## Directory Structure
 
 ```
 frontend/
@@ -63,4 +63,3 @@ frontend/
 ├── tailwind.config.ts # Luxury theme tokens and styling
 └── tsconfig.json      # Path aliases mapping (@/*, @vj/ar-engine, @vj/ui, etc.)
 ```
-

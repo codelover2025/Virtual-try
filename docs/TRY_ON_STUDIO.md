@@ -54,7 +54,7 @@ When in Multi-Jewellery mode, an **Active Multi-Fitting Bar** is prominently dis
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│ ✨ ACTIVE MULTI-FITTING (3 pieces)                 [Exit Multi Mode]   │
+│  ACTIVE MULTI-FITTING (3 pieces)                 [Exit Multi Mode]   │
 │                                                                        │
 │ [NECKLACE: Royal Diamond Choker  ×]                                    │
 │ [EARRINGS: Chandelier Drops      ×]                                    │

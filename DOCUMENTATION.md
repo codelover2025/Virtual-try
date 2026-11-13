@@ -7,15 +7,15 @@
 
 ---
 
-## 📚 Documentation Index
+## Documentation Index
 
-For deep-dive technical specifications, refer to the dedicated guides in the [`docs/`](file:///C:/Users/ankus/Downloads/Virtual-try/docs/) directory:
+For deep-dive technical specifications, refer to the dedicated guides in the [`docs/`](docs/) directory:
 
-1. [**Architecture Overview (`docs/ARCHITECTURE.md`)**](file:///C:/Users/ankus/Downloads/Virtual-try/docs/ARCHITECTURE.md): Complete system architecture, Next.js App Router structure, AR Engine core, dual-renderer design, and detector caching.
-2. [**Virtual Fitting Studio (`docs/TRY_ON_STUDIO.md`)**](file:///C:/Users/ankus/Downloads/Virtual-try/docs/TRY_ON_STUDIO.md): Single-Piece Studio vs. Multi-Jewellery Studio (`/try-on/multi`), automatic direct transfer UX, Active Fitting bar, and necklace-only fine-tuning.
-3. [**Computer Vision & Tracking (`docs/VISION_AND_TRACKING.md`)**](file:///C:/Users/ankus/Downloads/Virtual-try/docs/VISION_AND_TRACKING.md): Mathematical calibration formulas for MediaPipe FaceLandmarker, PoseLandmarkerLite, and HandLandmarker.
-4. [**3D PBR Shading & Gem Materials (`docs/3D_SHADING_AND_MATERIALS.md`)**](file:///C:/Users/ankus/Downloads/Virtual-try/docs/3D_SHADING_AND_MATERIALS.md): Physically-based gemstone materials (Solitaire Diamond, Ruby, Sapphire, Emerald, Amethyst), two-pass bangle shaders, and finger occluders.
-5. [**Developer & Contributor Guide (`docs/DEVELOPER_GUIDE.md`)**](file:///C:/Users/ankus/Downloads/Virtual-try/docs/DEVELOPER_GUIDE.md): Local development quick-start, production builds, adding new 2D/3D catalogue items, and troubleshooting.
+1. [**Architecture Overview (`docs/ARCHITECTURE.md`)**](docs/ARCHITECTURE.md): Complete system architecture, Next.js App Router structure, AR Engine core, dual-renderer design, and detector caching.
+2. [**Virtual Fitting Studio (`docs/TRY_ON_STUDIO.md`)**](docs/TRY_ON_STUDIO.md): Single-Piece Studio vs. Multi-Jewellery Studio (`/try-on/multi`), automatic direct transfer UX, Active Fitting bar, and necklace-only fine-tuning.
+3. [**Computer Vision & Tracking (`docs/VISION_AND_TRACKING.md`)**](docs/VISION_AND_TRACKING.md): Mathematical calibration formulas for MediaPipe FaceLandmarker, PoseLandmarkerLite, and HandLandmarker.
+4. [**3D PBR Shading & Gem Materials (`docs/3D_SHADING_AND_MATERIALS.md`)**](docs/3D_SHADING_AND_MATERIALS.md): Physically-based gemstone materials (Solitaire Diamond, Ruby, Sapphire, Emerald, Amethyst), two-pass bangle shaders, and finger occluders.
+5. [**Developer & Contributor Guide (`docs/DEVELOPER_GUIDE.md`)**](docs/DEVELOPER_GUIDE.md): Local development quick-start, production builds, adding new 2D/3D catalogue items, and troubleshooting.
 
 ---
 
@@ -223,7 +223,7 @@ Virtual-try/
 ### Adding New Pieces:
 1. **2D PNG Overlays**: Place 32-bit transparent PNG in `frontend/public/static/Image/<Category>/`.
 2. **3D Rings / Bangles**: Define a `ringConfig` or `bangleConfig` specifying gem color, metal, and accents.
-3. **Register in Catalogue**: Add the item definition to [`frontend/src/features/try-on/fallback-catalogue.ts`](file:///C:/Users/ankus/Downloads/Virtual-try/frontend/src/features/try-on/fallback-catalogue.ts).
+3. **Register in Catalogue**: Add the item definition to [`frontend/src/features/try-on/fallback-catalogue.ts`](frontend/src/features/try-on/fallback-catalogue.ts).
 
 ---
 

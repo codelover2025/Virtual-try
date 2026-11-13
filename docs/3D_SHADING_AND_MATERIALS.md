@@ -39,11 +39,11 @@ new THREE.MeshPhysicalMaterial({
 
 | Product Name | Category | Gem Color Code | Hex Preview | Material Type |
 |---|---|---|---|---|
-| **Brilliant Solitaire Diamond** | Solitaires | `#FFFFFF` | ⚪ White | Clear Transmission PBR |
-| **Royal Ruby Pavé Crown** | Halo Rings | `#E0115F` | 🔴 Deep Ruby Red | Faceted Opaque PBR + Emissive |
-| **Sapphire Halo Luxury Band** | Halo Rings | `#1E6FD9` | 🔵 Royal Sapphire | Faceted Opaque PBR + Emissive |
-| **Imperial Emerald Gold Ring** | Solitaires | `#2ECC71` | 🟢 Emerald Green | Faceted Opaque PBR + Emissive |
-| **Amethyst Sovereign Band** | Accent Bands | `#9B59B6` | 🟣 Royal Purple | Faceted Opaque PBR + Emissive |
+| **Brilliant Solitaire Diamond** | Solitaires | `#FFFFFF` |  White | Clear Transmission PBR |
+| **Royal Ruby Pavé Crown** | Halo Rings | `#E0115F` |  Deep Ruby Red | Faceted Opaque PBR + Emissive |
+| **Sapphire Halo Luxury Band** | Halo Rings | `#1E6FD9` |  Royal Sapphire | Faceted Opaque PBR + Emissive |
+| **Imperial Emerald Gold Ring** | Solitaires | `#2ECC71` |  Emerald Green | Faceted Opaque PBR + Emissive |
+| **Amethyst Sovereign Band** | Accent Bands | `#9B59B6` |  Royal Purple | Faceted Opaque PBR + Emissive |
 
 > [!TIP]
 > Each gem mesh is accompanied by a subtle internal `PointLight` (color matched to the gem, intensity $\approx 0.40$). This guarantees that the gemstone stays luminous even when the user's ambient webcam room lighting is dim.
@@ -100,6 +100,6 @@ To simulate the ring sliding *around* the finger rather than pasting as a sticke
 ## 5. AxesHelper Debugging
 
 - Pressing **`X`** or clicking the **`Axes [X]: ON/OFF`** toggle in the studio header renders 3D coordinate axes attached to the active ring:
-  - 🔴 **Red (X)**: Lateral horizontal axis across the finger.
-  - 🟢 **Green (Y)**: Dorsal surface normal pointing outward towards the camera.
-  - 🔵 **Blue (Z)**: Long axis aligned with the finger bone vector.
+  - **Red (X)**: Lateral horizontal axis across the finger.
+  - **Green (Y)**: Dorsal surface normal pointing outward towards the camera.
+  - **Blue (Z)**: Long axis aligned with the finger bone vector.
