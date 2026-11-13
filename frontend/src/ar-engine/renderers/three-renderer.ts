@@ -662,15 +662,10 @@ export class ThreeRenderer {
       this.root.visible = false;
     }
 
-    // Apply secondary (for dual earrings or layered long chains)
+    // Apply secondary (only for dual items such as earrings).
     const isDualEarring =
       (kind?.toUpperCase().includes('EARRING') ?? false) ||
       (this.currentAssetUrl?.includes('earring') ?? false);
-    const isNecklace =
-      (kind?.toUpperCase().includes('NECK') ?? false) ||
-      (kind?.toUpperCase().includes('PENDANT') ?? false) ||
-      (kind?.toUpperCase().includes('MANGALSUTRA') ?? false);
-
     if (isDualEarring && pose.secondaryPosition && secOpacity > 0.01) {
       this.secondary.visible = true;
       this.secondary.position.set(
@@ -680,17 +675,6 @@ export class ThreeRenderer {
       );
       this.secondary.rotation.set(pitch, yaw, -pose.rotationZ);
       this.secondary.scale.setScalar(s);
-      this._setGroupOpacity(this.secondary, secOpacity);
-    } else if (isNecklace && pose.secondaryPosition && secOpacity > 0.01) {
-      // Long chain rendered at chest level with expanded scale
-      this.secondary.visible = true;
-      this.secondary.position.set(
-        pose.secondaryPosition.x,
-        pose.secondaryPosition.y,
-        secZ - 0.1,
-      );
-      this.secondary.rotation.set(pitch, yaw, -pose.rotationZ);
-      this.secondary.scale.setScalar(s * 1.28);
       this._setGroupOpacity(this.secondary, secOpacity);
     } else {
       this.secondary.visible = false;

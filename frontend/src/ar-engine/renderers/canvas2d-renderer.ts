@@ -18,14 +18,14 @@ import type { PoseFit } from '../types.js';
 type DrawMode = 'none' | 'dots' | 'debug';
 
 const MAX_CACHE_ENTRIES = 16;
-const MAX_CACHE_BYTES   = 50 * 1024 * 1024;
+const MAX_CACHE_BYTES = 50 * 1024 * 1024;
 
 export class Canvas2dRenderer {
-  private image:          HTMLImageElement | null = null;
+  private image: HTMLImageElement | null = null;
   private mirrorSecondary = false;
-  private targetOpacity   = 1;
-  private currentOpacity  = 1;
-  private currentUrl      = '';
+  private targetOpacity = 1;
+  private currentOpacity = 1;
+  private currentUrl = '';
 
   // Image asset cache: URL → loaded HTMLImageElement with metadata
   private readonly imageCache = new Map<string, { img: HTMLImageElement; bytes: number; lastUsed: number }>();
@@ -40,7 +40,7 @@ export class Canvas2dRenderer {
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly ctx:    CanvasRenderingContext2D,
+    private readonly ctx: CanvasRenderingContext2D,
   ) {
     // Enable image smoothing for better quality
     ctx.imageSmoothingEnabled = true;
@@ -129,13 +129,10 @@ export class Canvas2dRenderer {
     if (isNecklace) {
       // 2. Necklace width = ~0.55 x shoulder width, scaled with depth
       const shoulderRef = pose.scale * 100;
-      const isLongChain = secondary && pose.secondaryPosition;
-      // Long chain automatically scales bigger (+28%) with wider chest loop
-      const chainScaleMul = isLongChain ? 1.28 : 1.0;
-      w = Math.max(120, Math.min(850, shoulderRef * 0.55 * chainScaleMul));
+      w = Math.max(120, Math.min(800, shoulderRef * 0.55));
       h = w * aspect;
       originX = -w / 2;
-      originY = isLongChain ? -h * 0.36 : -h * 0.40; // Centered at neck base / collarbone drape
+      originY = -h * 0.44; // Anchored at neck base to connect smoothly to shoulder line
     } else if (isEarring) {
       // Golden calibration from app.py: earring_w = max(14, int(face_width * 0.12))
       const faceW = pose.scale * 100;
@@ -212,15 +209,14 @@ export class Canvas2dRenderer {
     }
 
     if (isNecklace) {
-      // 4. Curve the chain as a catenary draping on collarbone, and fade back portion near neck sides
-      const numSlices = 36;
+      // 4. Curve the chain as a catenary draping on collarbone, and pin ends to shoulder line
+      const numSlices = 40;
       const sliceW = w / numSlices;
       const srcSliceW = img.naturalWidth / numSlices;
-      const isLongChain = secondary && pose.secondaryPosition;
-      const sagRatio = isLongChain ? 0.16 : 0.10;
-      const sag = Math.max(4, Math.min(32, h * sagRatio));
+      const sag = Math.max(6, Math.min(26, h * 0.12));
       const k = 1.25;
       const coshK = Math.cosh(k);
+      const vertOffset = pose.verticalOffset ?? 0;
 
       for (let i = 0; i < numSlices; i++) {
         const u = (i + 0.5) / numSlices;
@@ -231,10 +227,15 @@ export class Canvas2dRenderer {
         const catRatio = (Math.cosh(k * t) - 1) / (coshK - 1);
         const yOffset = -sag * catRatio;
 
+        // Suspension pinning: When user adjusts vertical position, the suspension ends
+        // at the sides stay firmly connected to the neck and shoulder line (drape = 0 at |t| = 1),
+        // while the center and pendant drape down into the chest.
+        const drape = vertOffset * (1 - catRatio);
+
         // Fade the back portion near the neck sides
         let edgeFade = 1.0;
-        if (absT > 0.60) {
-          const f = Math.max(0, Math.min(1, (0.98 - absT) / 0.38));
+        if (absT > 0.65) {
+          const f = Math.max(0, Math.min(1, (0.98 - absT) / 0.33));
           edgeFade = f * f * (3 - 2 * f);
         }
 
@@ -245,16 +246,47 @@ export class Canvas2dRenderer {
         const dx = originX + i * sliceW;
         const dw = sliceW + 0.5;
 
+        // Top of chain stays anchored at originY + yOffset at the shoulder line,
+        // and the slice extends down by drape to drop the pendant down into the chest
+        const sliceY = originY + yOffset;
+        const sliceH = h + Math.max(0, drape);
+
         this.ctx.globalAlpha = sliceAlpha;
         this.ctx.drawImage(
           img,
           sx, 0, srcSliceW, img.naturalHeight,
-          dx, originY + yOffset, dw, h,
+          dx, sliceY + (drape < 0 ? drape : 0), dw, sliceH,
         );
       }
+
+      // Chain shoulder-line connection:
+      // Seamlessly connect the chain ends along the catenary trajectory
+      // directly over the shoulder line into the back of the neck
+      const beadCount = 4;
+      for (const side of [1, -1]) {
+        for (let b = 1; b <= beadCount; b++) {
+          const extT = 0.96 + b * 0.06;
+          const extX = side === 1 ? originX + w * (0.5 + extT * 0.5) : originX + w * (0.5 - extT * 0.5);
+          const extCatRatio = (Math.cosh(k * extT) - 1) / (coshK - 1);
+          const extY = originY - sag * extCatRatio + (h * 0.35);
+          const beadAlpha = alpha * Math.max(0, 1 - b / (beadCount + 1));
+
+          if (beadAlpha < 0.02) continue;
+
+          this.ctx.save();
+          this.ctx.globalAlpha = beadAlpha;
+          this.ctx.beginPath();
+          this.ctx.arc(extX, extY, Math.max(2, w * 0.012), 0, Math.PI * 2);
+          this.ctx.fillStyle = '#f8f5ee';
+          this.ctx.shadowColor = 'rgba(212,175,55,0.7)';
+          this.ctx.shadowBlur = 2;
+          this.ctx.fill();
+          this.ctx.restore();
+        }
+      }
     } else {
-      this.ctx.shadowColor   = 'rgba(0,0,0,0.16)';
-      this.ctx.shadowBlur    = 3;
+      this.ctx.shadowColor = 'rgba(0,0,0,0.16)';
+      this.ctx.shadowBlur = 3;
       this.ctx.shadowOffsetY = 1;
       this.ctx.shadowOffsetX = 0;
       this.ctx.drawImage(img, originX, originY, w, h);
@@ -284,9 +316,9 @@ export class Canvas2dRenderer {
   }
 
   drawLandmarks(
-    named:  Record<string, { x: number; y: number }>,
-    keys:   string[],
-    mode:   DrawMode = 'dots',
+    named: Record<string, { x: number; y: number }>,
+    keys: string[],
+    mode: DrawMode = 'dots',
   ): void {
     if (mode === 'none') return;
     this.ctx.save();
@@ -296,10 +328,10 @@ export class Canvas2dRenderer {
 
       const color = key.includes('EAR') ? '#22c55e'
         : key.includes('RING') ? '#f59e0b'
-        : key.includes('WRIST') || key.includes('BANGLE') ? '#a78bfa'
-        : key.includes('NOSE') ? '#f472b6'
-        : key.includes('NECKLACE') || key.includes('CHIN') ? '#06b6d4'
-        : '#38bdf8';
+          : key.includes('WRIST') || key.includes('BANGLE') ? '#a78bfa'
+            : key.includes('NOSE') ? '#f472b6'
+              : key.includes('NECKLACE') || key.includes('CHIN') ? '#06b6d4'
+                : '#38bdf8';
 
       // Outer glow
       this.ctx.beginPath();
@@ -489,7 +521,7 @@ export class Canvas2dRenderer {
   async exportBlob(
     sources: Array<HTMLVideoElement | HTMLCanvasElement>,
     mimeType = 'image/jpeg',
-    quality  = 0.94,
+    quality = 0.94,
   ): Promise<Blob> {
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -497,7 +529,7 @@ export class Canvas2dRenderer {
     // Reuse or create offscreen canvas
     if (!this.offscreenCanvas || this.offscreenCanvas.width !== w || this.offscreenCanvas.height !== h) {
       this.offscreenCanvas = document.createElement('canvas');
-      this.offscreenCanvas.width  = w;
+      this.offscreenCanvas.width = w;
       this.offscreenCanvas.height = h;
       this.offscreenCtx = this.offscreenCanvas.getContext('2d');
     }
@@ -530,8 +562,8 @@ export class Canvas2dRenderer {
   // ─── Cleanup ───────────────────────────────────────────────────────────────
 
   dispose(): void {
-    this.image       = null;
-    this.currentUrl  = '';
+    this.image = null;
+    this.currentUrl = '';
     this.imageCache.clear();
     this.loading.clear();
     this.totalCacheBytes = 0;
@@ -603,9 +635,9 @@ export class Canvas2dRenderer {
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const img  = new Image();
+    const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload  = () => resolve(img);
+    img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load overlay: ${url}`));
     img.src = url;
   });

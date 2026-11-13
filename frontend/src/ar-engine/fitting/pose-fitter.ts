@@ -38,12 +38,12 @@ type SpringState = {
  * - Visibility hysteresis: fade out over a few frames rather than instant cut.
  */
 export class PoseFitter {
-  private smoothPos:    SpringState | null = null;
+  private smoothPos: SpringState | null = null;
   private smoothSecPos: SpringState | null = null;
-  private smoothRot    = 0;
-  private smoothRotX   = 0;
-  private smoothRotY   = 0;
-  private smoothScale  = 0;
+  private smoothRot = 0;
+  private smoothRotX = 0;
+  private smoothRotY = 0;
+  private smoothScale = 0;
   private visibilityAlpha = 0; // 0 = invisible, 1 = fully visible
 
   private readonly positionAlpha: number;
@@ -56,7 +56,7 @@ export class PoseFitter {
 
   // Session fine-tune adjustments for edge cases (hair, collar, body variation)
   private fineTuneScaleMul = 1.0;
-  private fineTuneOffsetY  = 0;
+  private fineTuneOffsetY = 0;
 
   constructor(
     private readonly profile: AnchorProfile,
@@ -69,13 +69,13 @@ export class PoseFitter {
       kindStr.includes('MANGALSUTRA');
     this.positionAlpha = defaults.positionAlpha ?? (isNeck ? 0.45 : 0.62);
     this.rotationAlpha = defaults.rotationAlpha ?? (isNeck ? 0.35 : 0.38);
-    this.scaleAlpha    = defaults.scaleAlpha    ?? (isNeck ? 0.28 : 0.28);
+    this.scaleAlpha = defaults.scaleAlpha ?? (isNeck ? 0.28 : 0.28);
     this.jewelleryKind = kindStr;
   }
 
   setFineTune(scaleMultiplier = 1.0, offsetY = 0): void {
     this.fineTuneScaleMul = Math.max(0.5, Math.min(2.0, scaleMultiplier));
-    this.fineTuneOffsetY  = offsetY;
+    this.fineTuneOffsetY = offsetY;
   }
 
   fit(landmarks: LandmarkResult | null): PoseFit {
@@ -83,10 +83,10 @@ export class PoseFitter {
       position: this.smoothPos
         ? { x: this.smoothPos.x, y: this.smoothPos.y }
         : { x: 0, y: 0 },
-      scale:     this.smoothScale || this.defaults.scale,
+      scale: this.smoothScale || this.defaults.scale,
       rotationZ: this.smoothRot,
       confidence: 0,
-      visible:   false,
+      visible: false,
     };
 
     if (!landmarks) {
@@ -159,7 +159,7 @@ export class PoseFitter {
 
     // ── Scale computation ─────────────────────────────────────────────────
     const liveScale = this.resolveLiveScale(landmarks);
-    const assetRef  = 100;
+    const assetRef = 100;
     let targetScale = this.defaults.scale * (liveScale / assetRef);
 
     // Depth-aware scale: if z-coordinates are available, adjust by relative depth.
@@ -229,10 +229,10 @@ export class PoseFitter {
     } else if (this.isEyewearFit(primaryKey) && secondary) {
       targetRotation = Math.atan2(secondary.y - primary.y, secondary.x - primary.x);
     } else if (this.defaults.fingerIndex != null) {
-      const rotKey  = `RING_ROT_${this.defaults.fingerIndex}`;
-      const dirKey  = `FINGER_DIR_${this.defaults.fingerIndex}`;
-      const rotPt   = landmarks.named[rotKey];
-      const dirPt   = landmarks.named[dirKey];
+      const rotKey = `RING_ROT_${this.defaults.fingerIndex}`;
+      const dirKey = `FINGER_DIR_${this.defaults.fingerIndex}`;
+      const rotPt = landmarks.named[rotKey];
+      const dirPt = landmarks.named[dirKey];
       if (rotPt) {
         targetRotation = rotPt.x; // pre-computed perpendicular angle
       } else if (dirPt) {
@@ -304,18 +304,10 @@ export class PoseFitter {
         };
       }
     } else if (this.isNecklaceFit(primaryKey)) {
-      oy += this.fineTuneOffsetY;
+      // For necklaces, anchor remains at the anatomical neck base / shoulder line.
+      // Vertical adjustment is passed via verticalOffset so the suspension points
+      // remain firmly attached to the shoulder line, while the chain drapes down.
       rawPos = { x: primary.x + ox, y: primary.y + oy, z: primary.z };
-      if (secondary) {
-        // Long chain hangs lower onto the collarbone / chest area
-        // When vertical position slider is adjusted, the long chain smoothly follows and extends
-        const dropOffset = Math.max(30, (secondary.y - primary.y) * 0.90) + (this.fineTuneOffsetY * 0.55);
-        rawSec = {
-          x: secondary.x,
-          y: primary.y + dropOffset,
-          z: secondary.z,
-        };
-      }
     } else {
       oy += this.fineTuneOffsetY;
       rawPos = { x: primary.x + ox, y: primary.y + oy, z: primary.z };
@@ -325,10 +317,10 @@ export class PoseFitter {
     const targetRotY = Number.isFinite(headYaw) ? (headYaw as number) * 0.7 : 0;
 
     if (!this.smoothPos) {
-      this.smoothPos   = { x: rawPos.x, y: rawPos.y, z: rawPos.z, vx: 0, vy: 0, vz: 0 };
-      this.smoothRot   = targetRotation;
-      this.smoothRotX  = targetRotX;
-      this.smoothRotY  = targetRotY;
+      this.smoothPos = { x: rawPos.x, y: rawPos.y, z: rawPos.z, vx: 0, vy: 0, vz: 0 };
+      this.smoothRot = targetRotation;
+      this.smoothRotX = targetRotX;
+      this.smoothRotY = targetRotY;
       this.smoothScale = targetScale;
     } else {
       this._lockPoint(this.smoothPos, rawPos);
@@ -440,32 +432,33 @@ export class PoseFitter {
       },
       secondaryPosition: this.smoothSecPos
         ? {
-            x: this.smoothSecPos.x,
-            y: this.smoothSecPos.y,
-            z: this.smoothSecPos.z,
-          }
+          x: this.smoothSecPos.x,
+          y: this.smoothSecPos.y,
+          z: this.smoothSecPos.z,
+        }
         : undefined,
-      scale:             this.smoothScale,
-      rotationZ:         this.smoothRot,
-      rotationX:         this.smoothRotX,
-      rotationY:         this.smoothRotY,
-      confidence:        landmarks.confidence * this.visibilityAlpha,
-      visible:           true,
+      scale: this.smoothScale,
+      rotationZ: this.smoothRot,
+      rotationX: this.smoothRotX,
+      rotationY: this.smoothRotY,
+      confidence: landmarks.confidence * this.visibilityAlpha,
+      visible: true,
       depthHint,
       yaw,
       pitch,
       ringQuaternion,
       ringSegment,
+      verticalOffset: this.fineTuneOffsetY,
     };
   }
 
   reset(): void {
-    this.smoothPos     = null;
-    this.smoothSecPos  = null;
-    this.smoothRot     = 0;
-    this.smoothRotX    = 0;
-    this.smoothRotY    = 0;
-    this.smoothScale   = 0;
+    this.smoothPos = null;
+    this.smoothSecPos = null;
+    this.smoothRot = 0;
+    this.smoothRotX = 0;
+    this.smoothRotY = 0;
+    this.smoothScale = 0;
     this.visibilityAlpha = 0;
   }
 

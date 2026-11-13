@@ -30,7 +30,6 @@ register(JewelleryKind.NECKLACE, {
   detector: 'pose',
   defaultProfile: {
     primaryAnchor: 'NECK_BASE',
-    secondaryAnchor: 'COLLARBONE',
     scaleRef: 'SHOULDER_WIDTH',
     offset: { x: 0, y: 0, z: 0 },
     minScale: 0.35,
@@ -66,7 +65,6 @@ register(JewelleryKind.PENDANT, {
   detector: 'pose',
   defaultProfile: {
     primaryAnchor: 'NECK_BASE',
-    secondaryAnchor: 'COLLARBONE',
     scaleRef: 'SHOULDER_WIDTH',
     offset: { x: 0, y: 0, z: 0 },
     minScale: 0.35,
@@ -78,7 +76,6 @@ register(JewelleryKind.MANGALSUTRA, {
   detector: 'pose',
   defaultProfile: {
     primaryAnchor: 'NECK_BASE',
-    secondaryAnchor: 'COLLARBONE',
     scaleRef: 'SHOULDER_WIDTH',
     offset: { x: 0, y: 0, z: 0 },
     minScale: 0.35,

@@ -37,6 +37,8 @@ export type PoseFit = {
   visible:           boolean;
   /** Depth hint: positive = closer to camera, negative = further. */
   depthHint?:        number;
+  /** Vertical adjustment offset in pixels for catenary drape pinning. */
+  verticalOffset?:   number;
   /** Head 3D Yaw in radians (positive = looking right, negative = looking left). */
   yaw?:              number;
   /** Head 3D Pitch in radians. */
