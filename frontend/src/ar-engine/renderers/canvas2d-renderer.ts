@@ -258,32 +258,6 @@ export class Canvas2dRenderer {
           dx, sliceY + (drape < 0 ? drape : 0), dw, sliceH,
         );
       }
-
-      // Chain shoulder-line connection:
-      // Seamlessly connect the chain ends along the catenary trajectory
-      // directly over the shoulder line into the back of the neck
-      const beadCount = 4;
-      for (const side of [1, -1]) {
-        for (let b = 1; b <= beadCount; b++) {
-          const extT = 0.96 + b * 0.06;
-          const extX = side === 1 ? originX + w * (0.5 + extT * 0.5) : originX + w * (0.5 - extT * 0.5);
-          const extCatRatio = (Math.cosh(k * extT) - 1) / (coshK - 1);
-          const extY = originY - sag * extCatRatio + (h * 0.35);
-          const beadAlpha = alpha * Math.max(0, 1 - b / (beadCount + 1));
-
-          if (beadAlpha < 0.02) continue;
-
-          this.ctx.save();
-          this.ctx.globalAlpha = beadAlpha;
-          this.ctx.beginPath();
-          this.ctx.arc(extX, extY, Math.max(2, w * 0.012), 0, Math.PI * 2);
-          this.ctx.fillStyle = '#f8f5ee';
-          this.ctx.shadowColor = 'rgba(212,175,55,0.7)';
-          this.ctx.shadowBlur = 2;
-          this.ctx.fill();
-          this.ctx.restore();
-        }
-      }
     } else {
       this.ctx.shadowColor = 'rgba(0,0,0,0.16)';
       this.ctx.shadowBlur = 3;
